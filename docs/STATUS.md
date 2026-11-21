@@ -1,28 +1,36 @@
-# STATUS — PWDTT Per-App Split Tunneling (Windows 11)
+# PWDTT Per-App Split Tunneling — Implementation Status
 
-**Последнее обновление:** Реализована подзадача T10 (WinDivert NETWORK SNAT/DNAT, Checksums & Orchestrator)
-**Активная ветка:** `feat/windows-split-tunnel` (форк `https://github.com/mwar-ru/PWDTT`)
-**Синхронизация с upstream:** Базовый релиз `luminescq/PWDTT` (`v1.6.0`)
+- **Fork Branch:** `feat/windows-split-tunnel`
+- **Upstream Base:** `luminescq/PWDTT` (`v1.6.0`)
+- **Platform Target:** Windows 11 x64 (Linux/macOS unaffected via build-tagged stubs)
 
-## Что уже реализовано
-- **Фаза 0 & Фаза 1 завершены (`T01`–`T04`):** документация, Settings Store (OneDrive + `%Env%`), Policy Engine + Anti-Loop, Windows Process Tree Resolver + Scanner.
-- **Фаза 2 завершена (`T05`–`T07`):** Windows NetIf Inspector (`pwdtt-wg`), PWDTT Adapter + минимальный шов в `backend/wg.go`, User-mode WFP Kill Switch & IPv6 Leak Guard (ABI проверен на Windows 11 x64).
-- **Фаза 3 (в процессе: `T08`–`T10` готовы):**
-  - `T08`: Контракт `TrafficRouter`, NAT-таблица и `StagingQueue` (25 мс).
-  - `T09`: WinDivert 2.2 Loader (SHA-256), `WINDIVERT_LAYER_SOCKET` и `GetExtendedTcpTable`/`UdpTable` (проверено на живой Windows 11).
-  - `T10`: `packet_rewrite.go` (IPv4/TCP/UDP SNAT/DNAT + RFC 791/793/768 контрольные суммы), `windivert_network_windows.go` (`!loopback and !impostor`, fast-path NAT, staging drain, fail-closed drop), `orchestrator_windows.go` + `orchestrator_stub.go`.
+## Task Progress (15 / 15 Completed)
 
-## Что сейчас работает
-- Полный цикл `WindowsTrafficRouter` (WFP + WinDivert SOCKET + WinDivert NETWORK + NAT + Staging) компилируется под Windows x64 и проходит `-race` тесты на Linux/Windows.
+| ID | Module | Status | Key Artifacts |
+|---|---|---|---|
+| T01 | Docs & ADRs | DONE | `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/DECISIONS/ADR-001..005` |
+| T02 | Settings Store + OneDrive | DONE | `internal/splittunnel/settings/settings.go`, `*_test.go` |
+| T03 | Path Normalization & Policy | DONE | `internal/splittunnel/appmgr/path_normalize.go`, `policy_eval.go` |
+| T04 | Windows Process Tree | DONE | `internal/splittunnel/appmgr/process_tree_windows.go`, `process_types.go` |
+| T05 | Network Interface Inspector | DONE | `internal/splittunnel/vpn/netif_windows.go`, `types.go` |
+| T06 | PWDTT WireGuard Adapter | DONE | `internal/splittunnel/vpn/pwdtt_adapter.go`, minimal seam in `backend/wg.go` |
+| T07 | WFP Kill Switch & IPv6 Guard | DONE | `internal/splittunnel/router/wfp_plan.go`, `wfp_guard_windows.go`, `wfp_cleanup_windows.go` |
+| T08 | NAT Table & Staging Queue | DONE | `internal/splittunnel/router/interface.go`, `nat_table.go`, `staging_queue.go` |
+| T09 | WinDivert 2.2 Loader & SOCKET | DONE | `internal/splittunnel/router/socket_table.go`, `windivert_loader_windows.go`, `windivert_socket_windows.go` |
+| T10 | WinDivert NETWORK & Rewrite | DONE | `internal/splittunnel/router/packet_rewrite.go`, `windivert_network_windows.go`, `orchestrator_windows.go` |
+| T11 | DNS Guard (`svchost` UDP/53) | DONE | `internal/splittunnel/router/dns_guard.go`, `dns_guard_windows.go` |
+| T12 | Wails SplitTunnelService | DONE | `internal/splittunnel/service.go`, `service_windows.go`, `main_windows.go` |
+| T13 | React UI + OneDrive + Sync | DONE | `frontend/src/lib/splitTunnelApi.ts`, `frontend/src/pages/SplitTunnel.tsx`, `App.tsx`, `Sidebar.tsx` |
+| T14 | CI, VM E2E Script & Guide | DONE | `.github/workflows/split-tunnel-ci.yml`, `scripts/verify_split_tunnel_vm.ps1`, `docs/VM_TESTING_GUIDE.md` |
+| T15 | Upstream Sync & AI Report | DONE | `internal/splittunnel/updater/*`, `internal/splittunnel/service_updater.go` |
 
-## Что ещё не реализовано
-- Фаза 3: `T11` (DNS Guard — перехват системного UDP/53 `svchost.exe` + сохранение браузерного DoH).
-- Фаза 4: `T15` (Upstream Sync & AI-Report), `T12`–`T14` (Wails Service, UI SplitTunnelView, CI и E2E в VM).
+## Minimal Upstream Seams
 
-## Следующая задача
-- **ID:** `T11 — Модуль DNS Guard (svchost.exe порт 53 + браузерный DoH)`
-- **Цель:** Реализовать `dns_guard.go` и подключить `PacketHook` в `WindowsTrafficRouter`, чтобы в политике `tunnel_dns` системные UDP/53 запросы перенаправлялись в DNS туннеля (с DNAT ответа обратно), без петли для DNS самого PWDTT.
-- **Файлы для изучения:**
-  - `AGENTS.md`
-  - `docs/STATUS.md`
-  - `docs/DECISIONS/ADR-003-dns-quic-browsers.md`
+1. `backend/wg.go` — `vpn.ShouldSkipDefaultRoute()` + `vpn.NotifyTunnelState(...)`
+2. `main_windows.go` — bind & lifecycle hooks for `splittunnel.Service`
+3. `frontend/src/App.tsx` — `<Route path="/split-tunnel" element={<SplitTunnel />} />`
+4. `frontend/src/components/Sidebar.tsx` — conditional Split Tunnel nav button (Windows only)
+
+## Next Milestone
+
+- Live E2E verification inside a Windows 11 VM following `docs/VM_TESTING_GUIDE.md` with official WHQL-signed WinDivert 2.2.2 binaries.
