@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import Connect from './pages/Connect';
 import Logs from './pages/Logs';
+import SplitTunnel from './pages/SplitTunnel';
 import Toast from './components/Toast';
 import UpdateModal from './modals/UpdateModal';
 import { wdttLinkStore, parseWdttUrl } from './lib/utils/wdttLink';
@@ -91,6 +92,7 @@ export default function App() {
       <Routes>
         <Route element={<Layout />}>
           <Route path="/" element={<Connect />} />
+          <Route path="/split-tunnel" element={<SplitTunnel />} />
           <Route path="/logs" element={<Logs />} />
         </Route>
       </Routes>

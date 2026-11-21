@@ -1,18 +1,26 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   IconPlugConnected,
+  IconRoute,
   IconTerminal2,
   IconSettings2,
   IconSun,
   IconMoon,
 } from '@tabler/icons-react';
 import { themeStore } from '../lib/stores/themeStore';
+import { hasSplitTunnelBinding, splitTunnelApi } from '../lib/splitTunnelApi';
 
-const NAV = [
-  { path: '/', icon: <IconPlugConnected stroke={2} size={22} /> },
-  { path: '/logs', icon: <IconTerminal2 stroke={2} size={22} /> },
+const BASE_NAV = [
+  { path: '/', title: 'Подключение', icon: <IconPlugConnected stroke={2} size={22} /> },
+  { path: '/logs', title: 'Логи', icon: <IconTerminal2 stroke={2} size={22} /> },
 ];
+
+const SPLIT_NAV_ITEM = {
+  path: '/split-tunnel',
+  title: 'Split Tunnel',
+  icon: <IconRoute stroke={2} size={22} />,
+};
 
 const handleMouseMove = (e: React.MouseEvent<HTMLElement>) => {
   const el = e.currentTarget;
@@ -33,6 +41,19 @@ export default function Sidebar({ onSettings, pathname: pathnameProp }: Props) {
   const location = useLocation();
   const pathname = pathnameProp ?? location.pathname;
   const [theme, setTheme] = useState(() => themeStore.get());
+  const [splitSupported, setSplitSupported] = useState(() => hasSplitTunnelBinding());
+
+  useEffect(() => {
+    let active = true;
+    splitTunnelApi.isSupported().then(ok => {
+      if (active) setSplitSupported(ok);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const navItems = splitSupported ? [BASE_NAV[0], SPLIT_NAV_ITEM, BASE_NAV[1]] : BASE_NAV;
 
   const toggleTheme = () => {
     themeStore.toggle();
@@ -59,10 +80,12 @@ export default function Sidebar({ onSettings, pathname: pathnameProp }: Props) {
       `}</style>
       <aside className="sidebar" onMouseMove={handleMouseMove}>
         <div className="sidebar-top">
-          {NAV.map(({ path, icon }) => (
+          {navItems.map(({ path, title, icon }) => (
             <button
               type="button"
               key={path}
+              title={title}
+              aria-label={title}
               className={`nav-btn${pathname === path ? ' nav-btn--active' : ''}`}
               onClick={() => navigate(path)}
             >
