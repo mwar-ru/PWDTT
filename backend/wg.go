@@ -17,6 +17,8 @@ import (
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun"
+
+	"pwdtt/internal/splittunnel/vpn"
 )
 
 // WG — управление WireGuard интерфейсом.
@@ -287,10 +289,18 @@ var wintunDLLData []byte
 // InitWintun устанавливает wintun.dll (вызывается из main_windows.go).
 func InitWintun(dll []byte) { wintunDLLData = dll }
 
-func (w *WG) applyWindows(conf string, turnIPs []string, logf wgLogFunc) error {
+func (w *WG) applyWindows(conf string, turnIPs []string, logf wgLogFunc) (retErr error) {
 	w.stateMu.Lock()
 	defer w.stateMu.Unlock()
 	w.teardownWindowsLocked()
+
+	// Split-tunneling seam: notify Starting and report Error on any early return.
+	vpn.NotifyTunnelState(vpn.StateStarting, wgIface, nil)
+	defer func() {
+		if retErr != nil {
+			vpn.NotifyTunnelState(vpn.StateError, wgIface, retErr)
+		}
+	}()
 
 	if err := extractWintun(); err != nil {
 		return fmt.Errorf("extract wintun.dll: %w", err)
@@ -343,39 +353,50 @@ func (w *WG) applyWindows(conf string, turnIPs []string, logf wgLogFunc) error {
 		}
 	}
 
-	// Set low metric on WG interface so it wins over physical default route
-	_ = runCmdWindows("netsh", "interface", "ip", "set", "interface",
-		"interface="+wgIface, "metric=1")
+	// Split-tunneling seam: in "include" mode keep the physical NIC as default route
+	// so unselected apps go direct at native speed while WinDivert steers selected apps into Wintun.
+	skipDefaultRoute := vpn.ShouldSkipDefaultRoute()
+	if skipDefaultRoute {
+		_ = runCmdWindows("netsh", "interface", "ip", "set", "interface",
+			"interface="+wgIface, "metric=9999")
+	} else {
+		// Set low metric on WG interface so it wins over physical default route
+		_ = runCmdWindows("netsh", "interface", "ip", "set", "interface",
+			"interface="+wgIface, "metric=1")
 
-	// Get physical gateway and raise its metric so WG takes priority
-	gw := defaultGatewayWindows()
-	logf(fmt.Sprintf("Default gateway: %s", gw))
-	if gw != "" {
-		// Save original metric for restore on teardown
-		w.physGW = gw
-		_ = runCmdWindows("route", "change", "0.0.0.0", "mask", "0.0.0.0", gw, "metric", "9999")
-	}
-
-	// Exclude routes — VK IPs, DNS, etc go via physical gateway (bypass tunnel)
-	var excludes []string
-	if gw != "" {
-		for _, ip := range turnIPs {
-			excludes = append(excludes, ip+"/32")
+		// Get physical gateway and raise its metric so WG takes priority
+		gw := defaultGatewayWindows()
+		logf(fmt.Sprintf("Default gateway: %s", gw))
+		if gw != "" {
+			// Save original metric for restore on teardown
+			w.physGW = gw
+			_ = runCmdWindows("route", "change", "0.0.0.0", "mask", "0.0.0.0", gw, "metric", "9999")
 		}
-		excludes = append(excludes, vkExcludeCIDRs...)
-		for _, cidr := range excludes {
-			ip, mask, err := parseCIDR(cidr)
-			if err != nil {
-				continue
+
+		// Exclude routes — VK IPs, DNS, etc go via physical gateway (bypass tunnel)
+		var excludes []string
+		if gw != "" {
+			for _, ip := range turnIPs {
+				excludes = append(excludes, ip+"/32")
 			}
-			_ = runCmdWindows("route", "add", ip, "mask", mask, gw)
+			excludes = append(excludes, vkExcludeCIDRs...)
+			for _, cidr := range excludes {
+				ip, mask, err := parseCIDR(cidr)
+				if err != nil {
+					continue
+				}
+				_ = runCmdWindows("route", "add", ip, "mask", mask, gw)
+			}
 		}
+		w.activeExcludeRoutes = excludes
 	}
-	w.activeExcludeRoutes = excludes
 
 	// Add AllowedIPs routes via the WG interface
 	var tunnelRoutes []string
 	for _, cidr := range allowedIPs {
+		if skipDefaultRoute && vpn.IsDefaultRouteCIDR(cidr) {
+			continue
+		}
 		if err := runCmdWindows("netsh", "interface", "ip", "add", "route", cidr, wgIface); err != nil {
 			logf(fmt.Sprintf("netsh add route %s failed: %v", cidr, err))
 		}
@@ -383,6 +404,7 @@ func (w *WG) applyWindows(conf string, turnIPs []string, logf wgLogFunc) error {
 	}
 	w.activeRoutes = tunnelRoutes
 
+	vpn.NotifyTunnelState(vpn.StateUp, wgIface, nil)
 	logf(fmt.Sprintf("Туннель %s поднят, AllowedIPs: %v", wgIface, tunnelRoutes))
 	return nil
 }
@@ -397,6 +419,9 @@ func (w *WG) teardownWindowsLocked() {
 	if w.activeDevice == nil && w.activeTun == nil {
 		return
 	}
+
+	// Split-tunneling seam: notify StateDown BEFORE closing Wintun so Fail-Closed Kill Switch arms with zero leak window.
+	vpn.NotifyTunnelState(vpn.StateDown, wgIface, nil)
 
 	// Restore physical gateway metric (must happen BEFORE closing WG device)
 	if w.physGW != "" {
