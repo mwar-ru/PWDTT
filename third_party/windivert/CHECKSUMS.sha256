@@ -1,0 +1,7 @@
+# Official WHQL-signed WinDivert 2.2.2 (x64) binaries from https://reqrypt.org/windivert.html
+# Place WinDivert.dll and WinDivert64.sys next to pwdtt.exe (or in third_party/windivert/x64/).
+# Run `Get-FileHash WinDivert.dll, WinDivert64.sys -Algorithm SHA256` after downloading the official release
+# and pin the exact SHA-256 hashes below before building a release binary:
+#
+# <sha256_hex>  WinDivert.dll
+# <sha256_hex>  WinDivert64.sys
