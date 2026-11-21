@@ -17,6 +17,7 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"pwdtt/backend"
+	"pwdtt/internal/splittunnel"
 )
 
 //go:embed all:frontend/dist
@@ -99,6 +100,7 @@ func stopTray() {
 func main() {
 	backend.InitWintun(wintunDLL)
 	app := backend.NewApp()
+	splitTunnel := splittunnel.NewService()
 	secondInstanceLaunch := make(chan struct{}, 1)
 
 	err := wails.Run(&options.App{
@@ -114,6 +116,7 @@ func main() {
 		BackgroundColour: &options.RGBA{R: 255, G: 255, B: 255, A: 1},
 		OnStartup: func(ctx context.Context) {
 			app.Startup(ctx)
+			splitTunnel.Startup(ctx)
 			startTray(ctx)
 			go func() {
 				for range secondInstanceLaunch {
@@ -124,8 +127,9 @@ func main() {
 		OnShutdown: func(ctx context.Context) {
 			stopTray()
 			app.Shutdown(ctx)
+			splitTunnel.Shutdown(ctx)
 		},
-		Bind: []interface{}{app},
+		Bind: []interface{}{app, splitTunnel},
 		SingleInstanceLock: &options.SingleInstanceLock{
 			UniqueId: "pwdtt-windows-client",
 			OnSecondInstanceLaunch: func(options.SecondInstanceData) {
