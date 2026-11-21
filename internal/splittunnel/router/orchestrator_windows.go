@@ -6,13 +6,14 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"pwdtt/internal/splittunnel/appmgr"
 	"pwdtt/internal/splittunnel/settings"
 	"pwdtt/internal/splittunnel/vpn"
 )
 
-// WindowsTrafficRouter orchestrates WFP Kill Switch + WinDivert SOCKET/NETWORK + NAT/Staging.
+// WindowsTrafficRouter orchestrates WFP Kill Switch + WinDivert SOCKET/NETWORK + NAT/Staging + DNS Guard.
 type WindowsTrafficRouter struct {
 	mu           sync.Mutex
 	dllDir       string
@@ -23,6 +24,7 @@ type WindowsTrafficRouter struct {
 	wfp      WFPGuard
 	nat      *NATTable
 	staging  *StagingQueue
+	dnsGuard *DNSGuard
 
 	dll     *WinDivertDLL
 	sockets *SocketTable
@@ -51,12 +53,13 @@ func NewWindowsTrafficRouter(dllDir string, expectedHashes map[string]string, re
 		wfp:          NewWindowsWFPGuard(),
 		nat:          NewNATTable(),
 		staging:      NewStagingQueue(),
+		dnsGuard:     NewDNSGuard(),
 		cfg:          settings.DefaultConfig(),
 		state:        RouterStopped,
 	}
 }
 
-// Start cleans stale WFP rules, loads WinDivert 2.2, and starts SOCKET + NETWORK engines.
+// Start cleans stale WFP rules, loads WinDivert 2.2, and starts SOCKET + NETWORK + DNS Guard engines.
 func (r *WindowsTrafficRouter) Start(ctx context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -85,6 +88,7 @@ func (r *WindowsTrafficRouter) Start(ctx context.Context) error {
 	})
 	tracker := NewSocketTracker(dll, sockTable)
 	eng = newNetworkEngine(dll, tracker, r.resolver, r.nat, r.staging)
+	eng.SetDNSHook(newDNSPacketHook(r.dnsGuard, eng))
 
 	if r.policy == nil {
 		r.policy = appmgr.NewPolicyEngine(r.cfg, r.selfExePath)
@@ -106,6 +110,8 @@ func (r *WindowsTrafficRouter) Start(ctx context.Context) error {
 		return fmt.Errorf("start WinDivert NETWORK engine: %w", err)
 	}
 
+	go r.dnsGuard.RunSweep(runCtx, 5*time.Second)
+
 	r.dll = dll
 	r.sockets = sockTable
 	r.tracker = tracker
@@ -118,7 +124,7 @@ func (r *WindowsTrafficRouter) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop gracefully stops WinDivert handles, clears NAT/staging state, and closes WFP.
+// Stop gracefully stops WinDivert handles, clears NAT/staging/DNS state, and closes WFP.
 func (r *WindowsTrafficRouter) Stop() error {
 	r.mu.Lock()
 	cancel := r.cancel
@@ -141,6 +147,7 @@ func (r *WindowsTrafficRouter) Stop() error {
 	}
 	r.nat.Clear()
 	r.staging.Clear()
+	r.dnsGuard.Clear()
 	return r.wfp.Close()
 }
 
@@ -155,6 +162,7 @@ func (r *WindowsTrafficRouter) ApplyConfig(cfg settings.Config) error {
 		r.engine.SetPolicy(r.policy)
 	}
 	r.nat.Clear()
+	r.dnsGuard.Clear()
 	r.syncWFPLocked()
 	return nil
 }
@@ -178,6 +186,7 @@ func (r *WindowsTrafficRouter) OnTunnelEvent(ev vpn.TunnelEvent) {
 		}
 		r.nat.Clear()
 		r.staging.Clear()
+		r.dnsGuard.Clear()
 	}
 
 	if r.engine != nil {
