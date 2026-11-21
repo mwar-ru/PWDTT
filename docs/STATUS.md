@@ -1,30 +1,27 @@
 # STATUS — PWDTT Per-App Split Tunneling (Windows 11)
 
-**Последнее обновление:** Реализована подзадача T06 (Upstream PWDTT Tunnel Adapter & Minimal Seam)
+**Последнее обновление:** Реализована подзадача T07 (User-mode WFP Kill Switch & IPv6 Leak Guard)
 **Активная ветка:** `feat/windows-split-tunnel` (форк `https://github.com/mwar-ru/PWDTT`)
 **Синхронизация с upstream:** Базовый релиз `luminescq/PWDTT` (`v1.6.0`)
 
 ## Что уже реализовано
 - **Фаза 0 & Фаза 1 завершены (`T01`–`T04`):** документация, Settings Store (OneDrive + `%Env%`), Policy Engine + Anti-Loop, Windows Process Tree Resolver + Scanner.
-- **T05 — Инспектор сетевых интерфейсов (`internal/splittunnel/vpn`):** WinAPI `GetAdaptersAddresses`, выбор физического NIC и Wintun (`pwdtt-wg`), детектор конкурирующих VPN.
-- **T06 — Адаптер интеграции с туннелем PWDTT (`internal/splittunnel/vpn/pwdtt_adapter.go` + шов в `backend/wg.go`):**
-  - Интерфейс `TunnelHooks` и потокобезопасный `PWDTTAdapter` с подпиской на `TunnelEvent` (`Starting`/`Up`/`Down`/`Error`) и автоматическим чтением топологии `pwdtt-wg`.
-  - Минимальный шов в `backend/wg.go` (~25 строк): в режиме `include` Wintun поднимается с метрикой `9999` без захвата default route (`0.0.0.0/0`, `0.0.0.0/1`, `128.0.0.0/1`, `::/0`), а `StateDown` отправляется ДО закрытия Wintun (нулевое окно утечки для Kill Switch).
-  - При незарегистрированных хуках или в `global`-режиме поведение PWDTT 100% идентично оригиналу.
+- **Фаза 2 завершена (`T05`–`T07`):**
+  - `T05`: WinAPI инспектор сетевых интерфейсов (`pwdtt-wg` + физический NIC + детектор конкурирующих VPN).
+  - `T06`: Адаптер `PWDTTAdapter` + минимальный шов в `backend/wg.go` (~25 строк, нулевое окно утечки при teardown).
+  - `T07`: User-mode WFP Kill Switch (`internal/splittunnel/router/wfp_plan.go`, `wfp_guard_windows.go`, `wfp_cleanup_windows.go`, `wfp_guard_stub.go`) с точным x64 ABI `fwpuclnt.dll`, транзакциями, `dynamic`/`persistent_guard`, защитой от IPv6-утечек и `ResetWfpRules()`.
 
 ## Что сейчас работает
-- Оригинальные тесты PWDTT (`./tests/...`) и все наши модули (`settings`, `appmgr`, `vpn`) проходят `go test -race` и компилируются под Windows x64.
+- Все модули Фаз 1 и 2 (`settings`, `appmgr`, `vpn`, `router/wfp`) проходят `go test -race` и кросс-компилируются под Windows x64; оригинальные `./tests/...` PWDTT зелёные.
 
 ## Что ещё не реализовано
-- Фаза 2: `T07` (User-mode WFP Kill Switch & IPv6 leak protection).
-- Фаза 3: `T08`–`T11` (NAT/Staging Queue, WinDivert SOCKET/NETWORK, DNS Guard).
+- Фаза 3: `T08` (Контракт `TrafficRouter`, NAT-таблица, Staging Queue), `T09` (WinDivert SOCKET), `T10` (WinDivert NETWORK + SNAT/DNAT), `T11` (DNS Guard).
 - Фаза 4: `T15` (Upstream Sync & AI-Report), `T12`–`T14` (Wails Service, UI SplitTunnelView, CI и E2E в VM).
 
 ## Следующая задача
-- **ID:** `T07 — User-mode WFP Kill Switch и защита от IPv6-утечек`
-- **Цель:** Реализовать управление WFP фильтрами (`fwpuclnt.dll`) по `ALE_APP_ID` с выделенным Provider/Sublayer GUID и безопасной очисткой (`ResetWfpRules`).
+- **ID:** `T08 — Контракт TrafficRouter, stateful NAT-таблица и Staging Queue`
+- **Цель:** Реализовать платформонезависимое ядро сопоставления потоков (TCP/UDP/QUIC), таблицу SNAT/DNAT с TTL/LRU-очисткой и буфер ожидания первого пакета (`StagingQueue`, 15–30 мс) + бенчмарки и `-race` тесты.
 - **Файлы для изучения:**
   - `AGENTS.md`
   - `docs/STATUS.md`
-  - `docs/DECISIONS/ADR-002-fail-closed-killswitch.md`
   - `docs/modules/traffic-router.md`
