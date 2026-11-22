@@ -8,72 +8,77 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  release-windows:
+    name: Build & Draft Windows Release
+    runs-on: windows-latest
     steps:
-      - name: Download Linux artifact
-        uses: dawidd6/action-download-artifact@v6
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          workflow: build.yml
-          name: pwdtt-linux-amd64
-          path: dist
-
-      - name: Download Windows artifact
-        uses: dawidd6/action-download-artifact@v6
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
         with:
-          workflow: build.yml
-          name: pwdtt-windows-amd64
-          path: dist
-
-      - name: Download macOS artifact
-        uses: dawidd6/action-download-artifact@v6
-        with:
-          workflow: build.yml
-          name: pwdtt-macos
-          path: dist
-
-      - name: List dist contents
-        run: find dist/ -maxdepth 3 -ls
-
-      - name: Create Release
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - name: Frontend install & test
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run test
+      - name: Run Go tests
+        run: go test ./backend/... ./internal/splittunnel/...
+      - name: Build mwPWDTT_windows.exe
+        run: wails build -platform windows/amd64 -s
+      - name: Download & verify WinDivert 2.2.2-A
+        shell: pwsh
+        run: |
+          $wdZip = "$env:RUNNER_TEMP\WinDivert-2.2.2-A.zip"
+          $wdDir = "$env:RUNNER_TEMP\windivert"
+          try {
+            Invoke-WebRequest -Uri "https://github.com/basil00/WinDivert/releases/download/v2.2.2/WinDivert-2.2.2-A.zip" -OutFile $wdZip -UseBasicParsing
+          } catch {
+            Invoke-WebRequest -Uri "https://reqrypt.org/download/WinDivert-2.2.2-A.zip" -OutFile $wdZip -UseBasicParsing
+          }
+          Expand-Archive -Path $wdZip -DestinationPath $wdDir -Force
+          $dll = (Get-ChildItem $wdDir -Recurse -Filter "WinDivert.dll" | Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1).FullName
+          $sys = (Get-ChildItem $wdDir -Recurse -Filter "WinDivert64.sys" | Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1).FullName
+          Copy-Item $dll ".\third_party\windivert\WinDivert.dll" -Force
+          Copy-Item $sys ".\third_party\windivert\WinDivert64.sys" -Force
+          foreach ($line in Get-Content ".\third_party\windivert\CHECKSUMS.sha256") {
+            if ($line -match '^([0-9a-fA-F]{64})\s+(.+)$') {
+              $want = $Matches[1].ToLower()
+              $file = Join-Path ".\third_party\windivert" $Matches[2].Trim()
+              $got = (Get-FileHash -Algorithm SHA256 $file).Hash.ToLower()
+              if ($got -ne $want) { throw "WinDivert checksum mismatch: $file ($got != $want)" }
+              Write-Host "Verified $file"
+            }
+          }
+      - name: Package release zip & SHA256SUMS.txt
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $outDir = "release-out"
+          $stage = "$outDir\_stage"
+          $zipName = "mwPWDTT_windows-amd64-$tag.zip"
+          $zipPath = "$outDir\$zipName"
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          Copy-Item ".\build\bin\mwPWDTT_windows.exe" $stage
+          Copy-Item ".\third_party\windivert\WinDivert.dll" $stage
+          Copy-Item ".\third_party\windivert\WinDivert64.sys" $stage
+          Copy-Item ".\third_party\windivert\CHECKSUMS.sha256" $stage
+          Copy-Item ".\docs\MANUAL.md" $stage
+          Compress-Archive -Path "$stage\*" -DestinationPath $zipPath -Force
+          $hash = (Get-FileHash -Algorithm SHA256 $zipPath).Hash.ToLower()
+          [System.IO.File]::WriteAllText((Join-Path (Get-Location) "$outDir\SHA256SUMS.txt"), "$hash  $zipName`n", [System.Text.UTF8Encoding]::new($false))
+          Get-Content "$outDir\SHA256SUMS.txt"
+      - name: Create Draft GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          draft: true
           generate_release_notes: true
           files: |
-            dist/pwdtt-linux-amd64
-            dist/pwdtt-windows-amd64.exe
-            dist/PWDTT-macos.zip
-          body: |
-            ## PWDTT v1.6.0
-
-            **Транспорт и ядро:**
-            - TURN TCP транспорт (переключатель UDP/TCP в настройках)
-            - Автообновление TURN-кредов при 401: туннель больше не умирает через ~10 минут
-            - Фейл GetCreds больше не блокирует запуск следующих групп воркеров
-            - Пер-воркерский режим обфускации вместо общей записи (data race устранён)
-            - Устранена утечка горутин релея на error-путях сессии
-            - Восстановление логгера при неудачном старте ядра
-
-            **Bridge и WG:**
-            - Generation guard: быстрый Disconnect→Connect больше не ломает новую сессию
-            - stateMu: устранена гонка Apply/Teardown на состоянии WireGuard (Windows/macOS)
-            - Закрытие лог-файла при неудачном подключении
-            - Статический GUID wintun вынесен в windows-only wg_windows_init.go
-
-            **UI и профили:**
-            - Кириллица и Unicode в именах серверов
-            - Хеши сохраняются в бэкенд-профиль; ошибки сохранения не расходуют UI с диском
-            - Toast-уведомление при ошибке импорта wdtt://-ссылки
-
-            **Тесты:**
-            - Изоляция store-тестов на Windows/Linux (AppData/XDG_CONFIG_HOME) — тесты больше не пишут в реальный конфиг
-            - Остановка ядра в bridge-тестах, актуализированные ожидания настроек
-
-            **От сообщества (by @Regstar2):**
-            - Авторизация не-конфиговых DTLS-воркеров: фикс «Reader: EOF» на новых qWDTT-серверах (fix #27)
-            - Скролл длинного списка серверов + обрезка длинных имён
-
-            **Platforms:**
-            - Linux x86_64
-            - Windows x86_64
-            - macOS (Universal: Intel + Apple Silicon)
+            release-out/mwPWDTT_windows-amd64-${{ github.ref_name }}.zip
+            release-out/SHA256SUMS.txt
