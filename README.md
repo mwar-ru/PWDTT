@@ -1,159 +1,78 @@
-<p align="center">
-  <img src="assets/icons/icon.png" width="96" />
-</p>
+# mwPWDTT_windows
 
-<h1 align="center">PWDTT</h1>
+Desktop-клиент для **Windows 10 / 11 (x64)** для маршрутизации WireGuard-трафика через VK Calls TURN-серверы с полноценным **поприложенческим разделением трафика (Per-App Split Tunneling)**.
 
-<p align="center">
-  Десктопный VPN-клиент, который туннелирует трафик через TURN-серверы VK,<br>
-  маскируя соединение под зашифрованный медиатрафик звонка.<br>
-  <sub>Форк <a href="https://github.com/amurcanov/proxy-turn-vk-android">proxy-turn-vk-android</a> — версия для ПК</sub>
-</p>
+Форк проекта [luminescq/PWDTT](https://github.com/luminescq/PWDTT) (база `v1.6.0`).
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Go-1.26-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="Go">
-  <img src="https://img.shields.io/badge/Wails-v2-red?style=for-the-badge&logo=wails&logoColor=white" alt="Wails">
-  <img src="https://img.shields.io/badge/Linux-amd64-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux">
-  <img src="https://img.shields.io/badge/Windows-amd64-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Windows">
-  <img src="https://img.shields.io/badge/macOS-Universal-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS">
-</p>
+> **Важно:** Программа предназначена для личного использования, обучения и тестирования сетевых технологий.
 
----
+## Возможности
 
-## Как это работает
+- **Per-App Split Tunneling** — режимы `include` (только выбранные приложения через VPN), `exclude` (все кроме выбранных) и `global` (весь трафик).
+- **Сопоставление по имени `.exe`** (`Telegram.exe`, `firefox.exe`) — правила не ломаются после обновлений Microsoft Store и при переносе конфига на другой ПК; поддерживается наследование для дочерних процессов браузеров и Electron.
+- **Прямой туннельный pipe + WinDivert 2.2** — маршрутизация пакетов напрямую в `wireguard-go` с автоматическим TCP MSS clamping и проверкой целостности драйвера по `CHECKSUMS.sha256`.
+- **Защита от утечек (WFP + DNS Guard)**:
+  - WFP Kill Switch (`Fail-Closed` / `Fail-Open`) и блокировка IPv6-утечек при IPv4-туннеле.
+  - Опция **«Игнорировать Kill Switch при ручном отключении»** — при статусе «Отключён» выбранные приложения работают напрямую (`Direct`), а при обрыве туннеля срабатывает Kill Switch.
+  - Кнопка **«Сбросить WFP-правила»** для мгновенной очистки фильтров.
+  - Перенаправление UDP/53 выбранных программ в DNS туннеля (DoH браузеров на 443 не затрагивается).
+- **Синхронизация между ПК (OneDrive)** — выбор пользовательского пути для `split_tunnel.json`.
+- **Обновление ядра (Upstream Sync)** — проверка новых релизов `luminescq/PWDTT` и безопасный Dry-Run проверки слияния.
+- **Все базовые функции PWDTT** — профили, системный трей, автозапуск с Windows, светлая/тёмная тема, встроенные `wg-turn-client` и `wireguard-go`.
 
-Приложение поднимает локальный WireGuard-интерфейс и передаёт его трафик через TURN/DTLS серверы VK, оборачивая пакеты в RTP с шифрованием ChaCha20-Poly1305. С точки зрения провайдера — это обычный зашифрованный VK-звонок.
+## Скачивание и установка
 
-```
-Приложение → WireGuard → ChaCha20/RTP → VK TURN/DTLS → wdtt-server (VPS) → интернет
-```
+1. Скачай последний архив `mwPWDTT_windows-amd64-v*.zip` на странице **[Releases](https://github.com/mwar-ru/mwPWDTT_windows/releases)**.
+2. Распакуй **все файлы** в отдельную папку (например, `C:\Apps\mwPWDTT_windows\`). Рядом с `mwPWDTT_windows.exe` должны находиться:
+   - `mwPWDTT_windows.exe`
+   - `WinDivert.dll`
+   - `WinDivert64.sys`
+   - `CHECKSUMS.sha256`
+3. Запусти `mwPWDTT_windows.exe` и подтверди запрос прав администратора (UAC) — они требуются для адаптера Wintun, драйвера WinDivert и правил Windows Filtering Platform (WFP).
 
----
+> **Windows Defender / антивирус:** Перед загрузкой `WinDivert.dll` и `WinDivert64.sys` приложение сверяет их SHA-256 хеши с `CHECKSUMS.sha256`. Если антивирус блокирует драйвер, добавь папку приложения в исключения.
 
-## Запуск
+## Требования
 
-### Linux
-
-**1. Установите зависимости:**
-
-```bash
-# Ubuntu/Debian
-sudo apt install wireguard-tools libwebkit2gtk-4.1-dev
-
-# Arch
-sudo pacman -S wireguard-tools webkit2gtk-4.1
-```
-
-**2. Настройте права для WireGuard:**
-
-Приложению нужны права root для управления сетевым интерфейсом. Установите sudoers-правило:
-
-```bash
-# Одной командой (скачает и запустит):
-sudo bash <(curl -s https://raw.githubusercontent.com/luminescq/PWDTT/main/assets/install-sudoers.sh)
-```
-
-Или вручную через `visudo` — добавьте в `/etc/sudoers`:
-```
-your_user ALL=(ALL) NOPASSWD: /usr/bin/ip, /usr/bin/wg
-```
-
-Скрипт автоматически определит текущего пользователя и создаст файл `/etc/sudoers.d/pwdtt`.
-
-**3. Запустите:**
-
-```bash
-chmod +x pwdtt-linux-amd64
-./pwdtt-linux-amd64
-```
-
-### Windows
-
-Скачайте `pwdtt-windows-amd64.exe` из [Releases](https://github.com/luminescq/PWDTT/releases) и запустите. Драйвер WireGuard (wintun) встроен.
-
-### macOS
-
-Скачайте `PWDTT-macos.zip` из [Releases](https://github.com/luminescq/PWDTT/releases), распакуйте и запустите `PWDTT.app`. При первом запуске macOS запросит разрешение на создание сетевого интерфейса — введите пароль администратора.
-
-> Universal бинарник: работает на Intel и Apple Silicon (M1/M2/M3/M4).
-
----
+- **Windows 10 / 11 (x64)** с правами администратора.
+- **WebView2 Runtime** (обычно уже встроен в Windows 10/11).
+- Ссылка на звонок VK и сервер с развёрнутым [vk-tunnel-server](https://github.com/luminescq/vk-tunnel-server).
 
 ## Быстрый старт
 
-1. **Добавьте сервер** — кнопка `+` → вставьте `wdtt://`-ссылку или введите вручную
-2. **VK-хеши** — Настройки → вставьте хеши из `vk.com/call/join/<hash>`
-3. **Подключение** — кнопка питания
+1. На главном экране укажи параметры профиля (ссылка VK Calls и конфиг WireGuard).
+2. Открой раздел **Split Tunneling**, включи тумблер и выбери режим **Только выбранные приложения (`include`)**.
+3. Добавь нужные программы через **«Выбрать из процессов»** или **«Добавить .exe»** (в конфиге сохранятся переносимые имена вроде `Telegram.exe`, `firefox.exe`).
+4. Нажми **Подключить** на главном экране и проверь IP на `https://api.ipify.org` в выбранном и обычном браузерах.
 
----
+Подробная инструкция по настройке Kill Switch, OneDrive-синхронизации и решению проблем — в **[docs/MANUAL.md](docs/MANUAL.md)**.
 
-## Ссылки
+## Сборка из исходников (Windows)
 
-```
-wdtt://<IP>:<DTLS_PORT>:<WG_PORT>:<PROXY_PORT>:<PASSWORD>[:<HASH1>,<HASH2>,...][#название]
-```
+Требуются Go 1.25+, Node.js 20+ и [Wails CLI v2](https://wails.io/docs/getting-started/installation).
 
-- Поля 1–5 обязательны
-- Хеши — опциональны, через запятую, до 4 штук
-- `#название` — опциональный псевдоним сервера
+~~~powershell
+# 1. Сборка фронтенда
+Push-Location .\frontend
+npm ci
+npm run test
+npm run build
+Pop-Location
 
-Пример:
-```
-wdtt://1.2.3.4:56000:56001:0:mypassword:AbCdEfGh,XyZ12345#Мой сервер
-```
+# 2. Сборка mwPWDTT_windows.exe (вшивает иконку и UAC-манифест)
+wails build -platform windows/amd64 -s
 
-Вставить ссылку можно через кнопку `+` или просто **Ctrl+V** в любом месте окна.
+# 3. Копирование WinDivert рядом с бинарником
+Copy-Item -Force .\third_party\windivert\WinDivert.dll, .\third_party\windivert\WinDivert64.sys, .\third_party\windivert\CHECKSUMS.sha256 .\build\bin\
+~~~
 
-> Также принимаються ссылки qwdtt.
+Готовые файлы будут в папке `build\bin\`.
 
----
+## Документация
 
-## Сборка из исходников
+- [docs/MANUAL.md](docs/MANUAL.md) — полное руководство пользователя и FAQ.
+- [docs/VM_TESTING_GUIDE.md](docs/VM_TESTING_GUIDE.md) — инструкция по проверке Split Tunneling и WFP на Windows.
 
-**Зависимости:** Go 1.26+, Node.js 22+, [Wails v2](https://wails.io)
+## Благодарности и лицензия
 
-```bash
-# Linux
-sudo apt install libayatana-appindicator3-dev pkg-config gcc libwebkit2gtk-4.1-dev
-go install github.com/wailsapp/wails/v2/cmd/wails@latest
-
-git clone https://github.com/luminescq/PWDTT
-cd PWDTT
-wails build -platform linux/amd64 -tags webkit2_41 -o pwdtt-linux-amd64
-# → build/bin/pwdtt-linux-amd64
-```
-
-```bash
-# Windows (кросс-компиляция с Linux)
-wails build -platform windows/amd64
-# → build/bin/pwdtt.exe
-```
-
-```bash
-# macOS (только на macOS)
-wails build -platform darwin/universal
-# → build/bin/pwdtt-macos
-```
-
----
-
-## Отчёт об ошибках
-
-Если приложение работает некорректно, вы можете собрать отчёт прямо из интерфейса:
-
-1. Откройте **Настройки** (шестерёнка вверху)
-2. Нажмите **Отчёт** — информация о системе и логах сессии скопируется в буфер обмена
-3. Создайте [Issue](https://github.com/luminescq/PWDTT/issues/new) и вставьте отчёт
-
-Отчёт содержит: версию ОС, версию Go, версию приложения, имя хоста и.filtered логи текущей сессии.
-
----
-
-> [!IMPORTANT]
-> Приложение является техническим инструментом для защищённого туннелирования собственного трафика через ваш сервер. Автор не призывает использовать PWDTT для противоправных целей или нарушения правил сторонних сервисов.
-
----
-
-## Лицензия
-
-Этот проект распространяется под лицензией GNU General Public License v3.0.
+Основано на [luminescq/PWDTT](https://github.com/luminescq/PWDTT). Распространяется по лицензии [LICENSE](LICENSE).
