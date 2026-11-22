@@ -54,6 +54,10 @@ export function ListProfiles() {
   return window['go']['backend']['App']['ListProfiles']();
 }
 
+export function OpenUpdateLog() {
+  return window['go']['backend']['App']['OpenUpdateLog']();
+}
+
 export function SaveProfile(arg1, arg2) {
   return window['go']['backend']['App']['SaveProfile'](arg1, arg2);
 }

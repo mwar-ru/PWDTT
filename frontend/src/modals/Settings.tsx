@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { IconSettings2, IconX, IconHeartFilled, IconBug, IconAlertTriangle } from '@tabler/icons-react';
+import { IconSettings2, IconX, IconHeartFilled, IconBug, IconAlertTriangle, IconFileText } from '@tabler/icons-react';
 import { settingsStore } from '../lib/store';
 import type { AppSettings } from '../lib/types';
 import { SetAutoStart, GetAutoStart, GetVersion, GenerateReport, GetObfsAccepted, SetObfsAccepted, SetObfsMode } from '../../wailsjs/go/backend/App';
@@ -41,6 +41,20 @@ export default function Settings({ onClose }: Props) {
     GetVersion().then(setVersion).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleOpenUpdateLog = async () => {
+    try {
+      const fn = (window as unknown as { go?: { backend?: { App?: { OpenUpdateLog?: () => Promise<void> } } } })?.go?.backend?.App?.OpenUpdateLog;
+      if (!fn) {
+        toastStore.show('Доступно только в Windows-сборке', 3000);
+        return;
+      }
+      await fn();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toastStore.show(msg || 'Не удалось открыть лог обновления', 3500);
+    }
+  };
 
   const handleReport = async () => {
     const logs = logStore.getAll();
@@ -128,6 +142,10 @@ export default function Settings({ onClose }: Props) {
             <button type="button" className={`st-action${copiedReport ? ' st-action--copied' : ''}`} onClick={handleReport}>
               <IconBug size={14} />
               {copiedReport ? 'Скопировано!' : 'Отчёт'}
+            </button>
+            <button type="button" className="st-action" onClick={handleOpenUpdateLog} title="Открыть лог последнего автообновления">
+              <IconFileText size={14} />
+              Лог обн.
             </button>
           </div>
 

@@ -29,6 +29,8 @@ export function IsRunning():Promise<boolean>;
 
 export function ListProfiles():Promise<Record<string, backend.ProfileData>>;
 
+export function OpenUpdateLog():Promise<void>;
+
 export function SaveProfile(arg1:string,arg2:backend.ProfileData):Promise<void>;
 
 export function SetAutoStart(arg1:boolean):Promise<void>;

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unsafe"
 
 	wails "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -258,4 +259,31 @@ func findFileByName(root, name string) string {
 		return nil
 	})
 	return found
+}
+
+// OpenUpdateLog opens the last self-update log file in Notepad.
+func (a *App) OpenUpdateLog() error {
+	logPath := filepath.Join(os.TempDir(), "mwpwdtt-last-update.log")
+	if _, err := os.Stat(logPath); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("лог обновлений ещё не создавался")
+		}
+		return err
+	}
+	shell32 := syscall.NewLazyDLL("shell32.dll")
+	shellExecute := shell32.NewProc("ShellExecuteW")
+	verb, _ := syscall.UTF16PtrFromString("open")
+	file, _ := syscall.UTF16PtrFromString(logPath)
+	ret, _, _ := shellExecute.Call(
+		0,
+		uintptr(unsafe.Pointer(verb)),
+		uintptr(unsafe.Pointer(file)),
+		0,
+		0,
+		1,
+	)
+	if ret <= 32 {
+		return exec.Command("notepad.exe", logPath).Start()
+	}
+	return nil
 }
