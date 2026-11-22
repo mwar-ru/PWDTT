@@ -60,7 +60,7 @@ const (
 
 	fwpMatchEqual     = 0
 	fwpDataTypeUint8  = 1
-	fwpDataTypeBlob   = 11
+	fwpDataTypeBlob   = 12
 
 	fwpEAlreadyExists    = 0x80320009
 	fwpEFilterNotFound   = 0x80320003
@@ -242,6 +242,7 @@ func (g *WindowsWFPGuard) ensureSessionLocked(persistent bool) error {
 		g.engineHandle = 0
 		return err
 	}
+	setActiveWFPGuard(g)
 	return nil
 }
 
@@ -312,7 +313,9 @@ func (g *WindowsWFPGuard) Apply(cfg WFPGuardConfig, tunnelUp bool) error {
 			_, _, _ = procFwpmTransactionAbort0.Call(g.engineHandle)
 			return err
 		}
-		newIDs = append(newIDs, id)
+		if id != 0 {
+			newIDs = append(newIDs, id)
+		}
 	}
 
 	if r1, _, _ := procFwpmTransactionCommit0.Call(g.engineHandle); r1 != 0 {
@@ -355,7 +358,7 @@ func (g *WindowsWFPGuard) addFilterLocked(spec WFPFilterSpec) (uint64, error) {
 			uintptr(unsafe.Pointer(&appBlob)),
 		)
 		if r1 != 0 {
-			return 0, fmt.Errorf("FwpmGetAppIdFromFileName0(%s) failed: 0x%x", spec.AppPath, r1)
+			return 0, nil
 		}
 		defer func(blob *fwpByteBlob) {
 			if blob != nil {
@@ -430,8 +433,12 @@ func (g *WindowsWFPGuard) Clear() error {
 func (g *WindowsWFPGuard) ResetStale() error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	g.activeIDs = nil
-	return ResetWfpRules()
+	g.clearFiltersLocked()
+	if g.engineHandle != 0 {
+		_, _, _ = procFwpmEngineClose0.Call(g.engineHandle)
+		g.engineHandle = 0
+	}
+	return resetWfpRulesEngine()
 }
 
 // Close clears filters and closes the WFP engine session.

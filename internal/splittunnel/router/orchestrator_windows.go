@@ -34,8 +34,9 @@ type WindowsTrafficRouter struct {
 	cancel   context.CancelFunc
 	cfg      settings.Config
 	policy   *appmgr.PolicyEngine
-	topology *vpn.NetworkTopology
-	tunnelUp bool
+	topology    *vpn.NetworkTopology
+	tunnelUp    bool
+	tunnelState vpn.TunnelState
 	state    RouterState
 	lastErr  string
 }
@@ -55,6 +56,7 @@ func NewWindowsTrafficRouter(dllDir string, expectedHashes map[string]string, re
 		staging:      NewStagingQueue(),
 		dnsGuard:     NewDNSGuard(),
 		cfg:          settings.DefaultConfig(),
+		tunnelState:  vpn.StateDown,
 		state:        RouterStopped,
 	}
 }
@@ -89,12 +91,14 @@ func (r *WindowsTrafficRouter) Start(ctx context.Context) error {
 	tracker := NewSocketTracker(dll, sockTable)
 	eng = newNetworkEngine(dll, tracker, r.resolver, r.nat, r.staging)
 	eng.SetDNSHook(newDNSPacketHook(r.dnsGuard, eng))
+	eng.SetDNSGuard(r.dnsGuard)
 
 	if r.policy == nil {
 		r.policy = appmgr.NewPolicyEngine(r.cfg, r.selfExePath)
 	}
 	eng.SetPolicy(r.policy)
 	eng.SetTopology(r.topology, r.tunnelUp)
+	eng.SetTunnelState(r.tunnelState)
 
 	if err := tracker.Start(runCtx); err != nil {
 		cancel()
@@ -110,6 +114,7 @@ func (r *WindowsTrafficRouter) Start(ctx context.Context) error {
 		return fmt.Errorf("start WinDivert NETWORK engine: %w", err)
 	}
 
+	vpn.SetInboundPacketHandler(eng.HandleTunnelInbound)
 	go r.dnsGuard.RunSweep(runCtx, 5*time.Second)
 
 	r.dll = dll
@@ -136,6 +141,7 @@ func (r *WindowsTrafficRouter) Stop() error {
 	r.state = RouterStopped
 	r.mu.Unlock()
 
+	vpn.SetInboundPacketHandler(nil)
 	if cancel != nil {
 		cancel()
 	}
@@ -172,6 +178,7 @@ func (r *WindowsTrafficRouter) OnTunnelEvent(ev vpn.TunnelEvent) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	r.tunnelState = ev.State
 	switch ev.State {
 	case vpn.StateUp:
 		r.tunnelUp = true
@@ -191,6 +198,7 @@ func (r *WindowsTrafficRouter) OnTunnelEvent(ev vpn.TunnelEvent) {
 
 	if r.engine != nil {
 		r.engine.SetTopology(r.topology, r.tunnelUp)
+		r.engine.SetTunnelState(r.tunnelState)
 	}
 	r.syncWFPLocked()
 }
@@ -203,14 +211,16 @@ func (r *WindowsTrafficRouter) syncWFPLocked() {
 	wfpCfg := WFPGuardConfig{
 		Enabled:       r.cfg.Enabled,
 		Mode:          r.policy.Mode(),
-		FailClosed:    r.policy.KillSwitchFailClosed(),
+		FailClosed:    r.policy.KillSwitchFailClosed() && !(r.policy.IgnoreKillSwitchOnDisconnect() && r.tunnelState == vpn.StateDown),
 		CrashMode:     r.cfg.WFPCrashMode,
 		TunnelHasIPv6: hasIPv6,
 		SelfExePath:   r.selfExePath,
-		AppPaths:      r.policy.MatchedAppPaths(),
+		AppPaths:      r.resolveWFPAppPathsLocked(),
 	}
 	if err := r.wfp.Apply(wfpCfg, r.tunnelUp); err != nil {
 		r.lastErr = "WFP apply warning: " + err.Error()
+	} else {
+		r.lastErr = ""
 	}
 }
 
@@ -236,4 +246,31 @@ func (r *WindowsTrafficRouter) Stats() RouterStats {
 		st.StagingExpired = r.engine.stagingExpired.Load()
 	}
 	return st
+}
+
+func (r *WindowsTrafficRouter) resolveWFPAppPathsLocked() []string {
+	configured := r.policy.MatchedAppPaths()
+	if len(configured) == 0 {
+		return nil
+	}
+	wanted := make(map[string]struct{}, len(configured))
+	out := make([]string, 0, len(configured))
+	for _, p := range configured {
+		if base := appmgr.BaseExeName(p); base != "" {
+			wanted[base] = struct{}{}
+		}
+		if len(p) >= 3 && p[1] == ':' {
+			out = append(out, p)
+		}
+	}
+	if r.resolver != nil {
+		if running, err := r.resolver.ListRunningApps(); err == nil {
+			for _, app := range running {
+				if _, ok := wanted[appmgr.BaseExeName(app.ExePath)]; ok && app.ExePath != "" {
+					out = append(out, app.ExePath)
+				}
+			}
+		}
+	}
+	return out
 }

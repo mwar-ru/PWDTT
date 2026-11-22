@@ -33,6 +33,8 @@ import {
 } from '../lib/splitTunnelApi';
 import './SplitTunnel.css';
 
+const safeCfg = (c: SplitTunnelConfig): SplitTunnelConfig => ({ ...c, apps: Array.isArray(c?.apps) ? c.apps : [] });
+
 const UPSTREAM_URL = 'https://github.com/luminescq/PWDTT';
 
 export default function SplitTunnel() {
@@ -75,7 +77,7 @@ export default function SplitTunnel() {
           splitTunnelApi.getStatus(),
         ]);
         if (!active) return;
-        setCfg(loaded);
+        setCfg(safeCfg(loaded));
         setConfigPath(path || st.config_path || '');
         setStatus(st);
       } catch (err) {
@@ -94,11 +96,11 @@ export default function SplitTunnel() {
   }, [supported, refreshStatus]);
 
   const persistConfig = async (next: SplitTunnelConfig) => {
-    setCfg(next);
+    setCfg(safeCfg(next));
     setSaving(true);
     try {
       const saved = await splitTunnelApi.saveConfig(next);
-      setCfg(saved);
+      setCfg(safeCfg(saved));
       await refreshStatus();
     } catch (err) {
       toastStore.show(`Не удалось сохранить настройки: ${String(err)}`, 4500);
@@ -173,7 +175,7 @@ export default function SplitTunnel() {
       const picked = await splitTunnelApi.pickConfigFileDialog(existingOnly);
       if (!picked) return;
       const loaded = await splitTunnelApi.setConfigPath(picked, moveExisting);
-      setCfg(loaded);
+      setCfg(safeCfg(loaded));
       setConfigPath(picked);
       await refreshStatus();
       toastStore.show(
@@ -500,6 +502,30 @@ export default function SplitTunnel() {
               Fail-Open
             </button>
           </div>
+        </div>
+
+        <div className="st-row">
+          <div>
+            <div className="st-label">Игнорировать Kill Switch при ручном отключении</div>
+            <div className="st-hint">
+              {cfg.ignore_kill_switch_on_disconnect !== false
+                ? 'При статусе «Отключён» выбранные приложения работают напрямую (Direct); при обрыве Kill Switch сработает'
+                : 'Строгий режим: приложения заблокированы даже при ручном отключении VPN'}
+            </div>
+          </div>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={cfg.ignore_kill_switch_on_disconnect !== false}
+              onChange={(e) =>
+                void persistConfig({
+                  ...cfg,
+                  ignore_kill_switch_on_disconnect: e.target.checked,
+                })
+              }
+            />
+            <span>Direct при «Отключён»</span>
+          </label>
         </div>
 
         <div className="st-row">

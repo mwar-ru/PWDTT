@@ -43,7 +43,7 @@ type InterfaceInfo struct {
 	IPv6           netip.Addr   `json:"ipv6,omitempty"`
 	GatewayIPv4    netip.Addr   `json:"gateway_ipv4,omitempty"`
 	GatewayIPv6    netip.Addr   `json:"gateway_ipv6,omitempty"`
-	DNSServers     []netip.Addr `json:"dns_servers,omitempty"`
+	DNSServers     []netip.Addr `json:"-"`
 	Metric         uint32       `json:"metric"`
 	MTU            uint32       `json:"mtu"`
 	IsUp           bool         `json:"is_up"`

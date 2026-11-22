@@ -14,6 +14,7 @@ export interface SplitTunnelConfig {
   enabled: boolean;
   mode: SplitMode;
   kill_switch: KillSwitchMode;
+  ignore_kill_switch_on_disconnect: boolean;
   wfp_crash_mode: WFPCrashMode;
   system_dns: SystemDNSPolicy;
   portable_env_paths: boolean;
@@ -157,6 +158,7 @@ export function defaultSplitTunnelConfig(): SplitTunnelConfig {
     enabled: true,
     mode: 'include',
     kill_switch: 'fail_closed',
+    ignore_kill_switch_on_disconnect: true,
     wfp_crash_mode: 'dynamic',
     system_dns: 'tunnel_dns',
     portable_env_paths: true,

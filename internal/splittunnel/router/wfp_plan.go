@@ -85,7 +85,7 @@ func BuildWFPFilterPlan(cfg WFPGuardConfig, tunnelUp bool) []WFPFilterSpec {
 			continue
 		}
 		base := appmgr.BaseExeName(norm)
-		if (selfNorm != "" && norm == selfNorm) || base == "pwdtt.exe" || base == "wg-turn-client.exe" {
+		if (selfNorm != "" && norm == selfNorm) || base == "pwdtt.exe" || base == "mwpwdtt_windows.exe" || base == "wg-turn-client.exe" {
 			continue
 		}
 		if _, dup := seen[norm]; dup {

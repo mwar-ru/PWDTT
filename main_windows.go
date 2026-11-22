@@ -49,14 +49,14 @@ func startTray(ctx context.Context) {
 		}
 
 		systray.SetIcon(trayIcon)
-		systray.SetTooltip("PWDTT")
+		systray.SetTooltip("mwPWDTT_windows")
 		systray.SetOnClick(func(systray.IMenu) { wailsruntime.WindowShow(ctx) })
 		systray.SetOnDClick(func(systray.IMenu) { wailsruntime.WindowShow(ctx) })
 
-		show := systray.AddMenuItem("Show PWDTT", "Restore PWDTT")
+		show := systray.AddMenuItem("Show mwPWDTT_windows", "Restore mwPWDTT_windows")
 		show.Click(func() { wailsruntime.WindowShow(ctx) })
 		systray.AddSeparator()
-		exit := systray.AddMenuItem("Exit", "Exit PWDTT")
+		exit := systray.AddMenuItem("Exit", "Exit mwPWDTT_windows")
 		exit.Click(func() { wailsruntime.Quit(ctx) })
 
 		trayReady.Store(true)
@@ -104,7 +104,7 @@ func main() {
 	secondInstanceLaunch := make(chan struct{}, 1)
 
 	err := wails.Run(&options.App{
-		Title:     "PWDTT",
+		Title:     "mwPWDTT_windows",
 		Width:     900,
 		Height:    600,
 		MinWidth:  800,

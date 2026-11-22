@@ -159,3 +159,47 @@ func VerifyIPv4L4Checksum(pkt []byte) bool {
 	sum := ipv4PseudoHeaderSum(pkt[12:16], pkt[16:20], uint8(p.Proto), uint16(len(l4)))
 	return onesComplementSum(l4, sum) == 0xFFFF
 }
+
+// ClampTCPSYNMSS clamps the TCP MSS option in IPv4 SYN packets to maxMSS (e.g. 1360 for WireGuard MTU 1420)
+// to prevent PMTUD blackholes when steering traffic from a 1500-MTU physical NIC into a 1420-MTU tunnel.
+func ClampTCPSYNMSS(pkt []byte, ihl int, proto Protocol, maxMSS uint16) bool {
+	if proto != ProtoTCP || len(pkt) < ihl+20 || maxMSS == 0 {
+		return false
+	}
+	tcp := pkt[ihl:]
+	if tcp[13]&0x02 == 0 {
+		return false
+	}
+	dataOffset := int(tcp[12]>>4) * 4
+	if dataOffset <= 20 || len(tcp) < dataOffset {
+		return false
+	}
+	opts := tcp[20:dataOffset]
+	for i := 0; i < len(opts); {
+		kind := opts[i]
+		if kind == 0 {
+			break
+		}
+		if kind == 1 {
+			i++
+			continue
+		}
+		if i+1 >= len(opts) {
+			break
+		}
+		optLen := int(opts[i+1])
+		if optLen < 2 || i+optLen > len(opts) {
+			break
+		}
+		if kind == 2 && optLen == 4 {
+			curMSS := binary.BigEndian.Uint16(opts[i+2 : i+4])
+			if curMSS > maxMSS {
+				binary.BigEndian.PutUint16(opts[i+2:i+4], maxMSS)
+				return true
+			}
+			return false
+		}
+		i += optLen
+	}
+	return false
+}

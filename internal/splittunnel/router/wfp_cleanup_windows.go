@@ -4,14 +4,35 @@ package router
 
 import (
 	"fmt"
+	"sync"
 	"unsafe"
 )
 
-// ResetWfpRules safely enumerates and deletes ALL Windows Filtering Platform filters,
-// sublayer, and provider belonging strictly to PWDTT's dedicated Provider GUID.
-// Safe to call on startup (to recover from a prior SIGKILL crash in persistent_guard mode)
-// or manually from UI / CLI recovery tools.
+var (
+	activeWFPGuardMu sync.Mutex
+	activeWFPGuard   *WindowsWFPGuard
+)
+
+func setActiveWFPGuard(g *WindowsWFPGuard) {
+	activeWFPGuardMu.Lock()
+	activeWFPGuard = g
+	activeWFPGuardMu.Unlock()
+}
+
+// ResetWfpRules closes any active in-process WFP session first (releasing dynamic objects),
+// then deletes ALL Windows Filtering Platform filters, sublayer, and provider belonging to PWDTT.
 func ResetWfpRules() error {
+	activeWFPGuardMu.Lock()
+	g := activeWFPGuard
+	activeWFPGuardMu.Unlock()
+
+	if g != nil {
+		_ = g.Close()
+	}
+	return resetWfpRulesEngine()
+}
+
+func resetWfpRulesEngine() error {
 	var engineHandle uintptr
 	r1, _, _ := procFwpmEngineOpen0.Call(
 		0,
@@ -29,47 +50,58 @@ func ResetWfpRules() error {
 		return fmt.Errorf("FwpmTransactionBegin0 failed: 0x%x", r1)
 	}
 
-	// Enumerate and delete all filters owned by pwdttProviderGUID
-	var tmpl fwpmFilterEnumTemplate0
-	tmpl.ProviderKey = &pwdttProviderGUID
-
 	var enumHandle uintptr
 	r1, _, _ = procFwpmFilterCreateEnumHandle0.Call(
 		engineHandle,
-		uintptr(unsafe.Pointer(&tmpl)),
+		0,
 		uintptr(unsafe.Pointer(&enumHandle)),
 	)
-	if r1 == 0 && enumHandle != 0 {
-		defer procFwpmFilterDestroyEnumHandle0.Call(engineHandle, enumHandle)
+	if r1 != 0 {
+		_, _, _ = procFwpmTransactionAbort0.Call(engineHandle)
+		return fmt.Errorf("FwpmFilterCreateEnumHandle0 failed: 0x%x", r1)
+	}
 
-		const batchSize = 64
-		for {
-			var entriesPtr **fwpmFilter0
-			var returned uint32
-			r1, _, _ = procFwpmFilterEnum0.Call(
-				engineHandle,
-				enumHandle,
-				batchSize,
-				uintptr(unsafe.Pointer(&entriesPtr)),
-				uintptr(unsafe.Pointer(&returned)),
-			)
-			if r1 != 0 || returned == 0 || entriesPtr == nil {
-				break
+	var toDelete []uint64
+	const batchSize = 128
+	for {
+		var entriesPtr **fwpmFilter0
+		var returned uint32
+		r1, _, _ = procFwpmFilterEnum0.Call(
+			engineHandle,
+			enumHandle,
+			batchSize,
+			uintptr(unsafe.Pointer(&entriesPtr)),
+			uintptr(unsafe.Pointer(&returned)),
+		)
+		if r1 != 0 || returned == 0 || entriesPtr == nil {
+			break
+		}
+
+		entries := unsafe.Slice(entriesPtr, returned)
+		for _, f := range entries {
+			if f == nil || f.FilterId == 0 {
+				continue
 			}
-
-			entries := unsafe.Slice(entriesPtr, returned)
-			for _, f := range entries {
-				if f != nil && f.FilterId != 0 {
-					_, _, _ = procFwpmFilterDeleteById0.Call(engineHandle, uintptr(f.FilterId))
-				}
+			matchesProvider := f.ProviderKey != nil && *f.ProviderKey == pwdttProviderGUID
+			matchesSublayer := f.SubLayerKey == pwdttSublayerGUID
+			if matchesProvider || matchesSublayer {
+				toDelete = append(toDelete, f.FilterId)
 			}
+		}
 
-			memPtr := uintptr(unsafe.Pointer(entriesPtr))
-			_, _, _ = procFwpmFreeMemory0.Call(uintptr(unsafe.Pointer(&memPtr)))
+		memPtr := uintptr(unsafe.Pointer(entriesPtr))
+		_, _, _ = procFwpmFreeMemory0.Call(uintptr(unsafe.Pointer(&memPtr)))
+	}
+	_, _, _ = procFwpmFilterDestroyEnumHandle0.Call(engineHandle, enumHandle)
+
+	for _, id := range toDelete {
+		r1, _, _ = procFwpmFilterDeleteById0.Call(engineHandle, uintptr(id))
+		if r1 != 0 && r1 != fwpEFilterNotFound {
+			_, _, _ = procFwpmTransactionAbort0.Call(engineHandle)
+			return fmt.Errorf("FwpmFilterDeleteById0(%d) failed: 0x%x", id, r1)
 		}
 	}
 
-	// Delete our dedicated sublayer and provider (ignore NOT_FOUND)
 	r1, _, _ = procFwpmSubLayerDeleteByKey0.Call(engineHandle, uintptr(unsafe.Pointer(&pwdttSublayerGUID)))
 	if r1 != 0 && r1 != fwpESublayerNotFound && r1 != fwpEFilterNotFound {
 		_, _, _ = procFwpmTransactionAbort0.Call(engineHandle)

@@ -37,8 +37,9 @@ type Config struct {
 	SchemaVersion    int         `json:"schema_version"`
 	Enabled          bool        `json:"enabled"`
 	Mode             string      `json:"mode"`
-	KillSwitch       string      `json:"kill_switch"`
-	WFPCrashMode     string      `json:"wfp_crash_mode"`
+	KillSwitch                   string      `json:"kill_switch"`
+	IgnoreKillSwitchOnDisconnect bool        `json:"ignore_kill_switch_on_disconnect"`
+	WFPCrashMode                 string      `json:"wfp_crash_mode"`
 	SystemDNS        string      `json:"system_dns"`
 	PortableEnvPaths bool        `json:"portable_env_paths"`
 	Apps             []AppConfig `json:"apps"`
@@ -55,21 +56,30 @@ func DefaultConfig() Config {
 		SchemaVersion:    1,
 		Enabled:          true,
 		Mode:             "include",
-		KillSwitch:       "fail_closed",
-		WFPCrashMode:     "dynamic",
+		KillSwitch:                   "fail_closed",
+		IgnoreKillSwitchOnDisconnect: true,
+		WFPCrashMode:                 "dynamic",
 		SystemDNS:        "tunnel_dns",
 		PortableEnvPaths: true,
 		Apps:             make([]AppConfig, 0),
 	}
 }
 
+// NormalizeAppExeName returns only the executable filename (e.g. "Telegram.exe").
+func NormalizeAppExeName(raw string) string {
+	v := strings.TrimSpace(strings.Trim(raw, `"`))
+	v = strings.ReplaceAll(v, `\`, "/")
+	v = strings.TrimRight(v, "/")
+	if idx := strings.LastIndex(v, "/"); idx >= 0 {
+		v = v[idx+1:]
+	}
+	return strings.TrimSpace(v)
+}
+
 func cloneConfig(cfg Config) Config {
 	cp := cfg
-	if cfg.Apps != nil {
-		cp.Apps = append([]AppConfig(nil), cfg.Apps...)
-	} else {
-		cp.Apps = make([]AppConfig, 0)
-	}
+	cp.Apps = make([]AppConfig, len(cfg.Apps))
+	copy(cp.Apps, cfg.Apps)
 	return cp
 }
 
@@ -98,6 +108,22 @@ func normalizeConfig(cfg Config) Config {
 	default:
 		res.SystemDNS = "tunnel_dns"
 	}
+	seen := make(map[string]struct{}, len(res.Apps))
+	clean := make([]AppConfig, 0, len(res.Apps))
+	for _, a := range res.Apps {
+		exe := NormalizeAppExeName(a.ExePath)
+		if exe == "" {
+			continue
+		}
+		k := strings.ToLower(exe)
+		if _, dup := seen[k]; dup {
+			continue
+		}
+		seen[k] = struct{}{}
+		a.ExePath = exe
+		clean = append(clean, a)
+	}
+	res.Apps = clean
 	return res
 }
 
@@ -164,9 +190,12 @@ func (s *Store) Load() (*Config, error) {
 	}
 
 	// 2. Try reading active configPath
-	cfg, err := s.readConfigFile(s.configPath)
+	cfg, migrated, err := s.readConfigFileWithMigration(s.configPath)
 	if err == nil {
 		s.config = *cfg
+		if migrated {
+			_ = s.saveToFileLocked(s.configPath, &s.config)
+		}
 		// Refresh local LKG cache whenever primary cloud/local config is successfully loaded
 		_ = s.saveToFileLocked(s.lastKnownGoodPath, &s.config)
 		cp := cloneConfig(s.config)
@@ -295,19 +324,33 @@ func (s *Store) SetConfigPath(newPath string, moveExisting bool) error {
 }
 
 func (s *Store) readConfigFile(path string) (*Config, error) {
+	cfg, _, err := s.readConfigFileWithMigration(path)
+	return cfg, err
+}
+
+func (s *Store) readConfigFileWithMigration(path string) (*Config, bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	var cfg Config
+	cfg := DefaultConfig()
+	cfg.Apps = nil
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("invalid json in %s: %w", path, err)
+		return nil, false, fmt.Errorf("invalid json in %s: %w", path, err)
+	}
+
+	migrated := !strings.Contains(string(data), "ignore_kill_switch_on_disconnect")
+	for _, a := range cfg.Apps {
+		if strings.ContainsAny(a.ExePath, `\/`) {
+			migrated = true
+			break
+		}
 	}
 
 	norm := normalizeConfig(cfg)
 	expanded := s.expandConfigPaths(norm)
-	return &expanded, nil
+	return &expanded, migrated, nil
 }
 
 func (s *Store) saveToFileLocked(path string, cfg *Config) error {

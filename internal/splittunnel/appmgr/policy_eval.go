@@ -55,6 +55,7 @@ type PolicyEngine struct {
 	enabled         bool
 	mode            string
 	killSwitch      string
+	ignoreKillSwitchOnDisconnect bool
 	systemDNS       string
 	selfPath        string
 	antiLoopNames   map[string]struct{}
@@ -89,7 +90,8 @@ func NewPolicyEngineWithEnv(cfg settings.Config, selfExePath string, getenv func
 	selfNorm := NormalizeWindowsPathWithEnv(selfExePath, getenv)
 
 	antiLoopNames := map[string]struct{}{
-		"pwdtt.exe":          {},
+		"pwdtt.exe":           {},
+		"mwpwdtt_windows.exe": {},
 		"wg-turn-client.exe": {},
 	}
 	if base := BaseExeName(selfNorm); base != "" {
@@ -126,6 +128,7 @@ func NewPolicyEngineWithEnv(cfg settings.Config, selfExePath string, getenv func
 		enabled:       cfg.Enabled,
 		mode:          mode,
 		killSwitch:    killSwitch,
+		ignoreKillSwitchOnDisconnect: cfg.IgnoreKillSwitchOnDisconnect,
 		systemDNS:     systemDNS,
 		selfPath:      selfNorm,
 		antiLoopNames: antiLoopNames,
@@ -195,9 +198,15 @@ func (e *PolicyEngine) matchesAppList(normExe string, parentChain []string) bool
 		if _, ok := e.rulesByPath[normExe]; ok {
 			return true
 		}
+		if exeBase := BaseExeName(normExe); exeBase != "" {
+			for _, rule := range e.rulesByPath {
+				if BaseExeName(rule.canonicalPath) == exeBase {
+					return true
+				}
+			}
+		}
 	}
 
-	// Child-process inheritance (e.g. Firefox plugin-container.exe, browser utility/network helpers)
 	for _, parent := range parentChain {
 		normParent := NormalizeWindowsPathWithEnv(parent, e.getenv)
 		if normParent == "" {
@@ -206,8 +215,14 @@ func (e *PolicyEngine) matchesAppList(normExe string, parentChain []string) bool
 		if rule, ok := e.rulesByPath[normParent]; ok && rule.matchChildren {
 			return true
 		}
+		if pBase := BaseExeName(normParent); pBase != "" {
+			for _, rule := range e.rulesByPath {
+				if rule.matchChildren && BaseExeName(rule.canonicalPath) == pBase {
+					return true
+				}
+			}
+		}
 	}
-
 	return false
 }
 
@@ -224,6 +239,11 @@ func (e *PolicyEngine) Enabled() bool {
 // KillSwitchFailClosed reports whether fail-closed blocking is active on tunnel outage.
 func (e *PolicyEngine) KillSwitchFailClosed() bool {
 	return e.killSwitch == "fail_closed"
+}
+
+// IgnoreKillSwitchOnDisconnect reports whether manual disconnect (StateDown) bypasses Kill Switch.
+func (e *PolicyEngine) IgnoreKillSwitchOnDisconnect() bool {
+	return e.ignoreKillSwitchOnDisconnect
 }
 
 // SystemDNSPolicy returns "tunnel_dns" or "system_dns".

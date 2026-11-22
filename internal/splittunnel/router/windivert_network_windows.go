@@ -34,20 +34,22 @@ type networkEngine struct {
 
 	stateMu  sync.RWMutex
 	policy   *appmgr.PolicyEngine
-	topology *vpn.NetworkTopology
-	tunnelUp bool
+	topology    *vpn.NetworkTopology
+	tunnelUp    bool
+	tunnelState vpn.TunnelState
 	dnsHook  PacketHook
+	dnsGuard *DNSGuard
 
 	handleMu sync.Mutex
 	handle   uintptr
 	doneCh   chan struct{}
 
-	packetsToVPN    atomic.Uint64
-	packetsDirect   atomic.Uint64
-	packetsDropped  atomic.Uint64
-	dnsRedirected   atomic.Uint64
-	stagingQueued   atomic.Uint64
-	stagingExpired  atomic.Uint64
+	packetsToVPN   atomic.Uint64
+	packetsDirect  atomic.Uint64
+	packetsDropped atomic.Uint64
+	dnsRedirected  atomic.Uint64
+	stagingQueued  atomic.Uint64
+	stagingExpired atomic.Uint64
 }
 
 func newNetworkEngine(
@@ -62,7 +64,8 @@ func newNetworkEngine(
 		tracker:  tracker,
 		resolver: resolver,
 		nat:      nat,
-		staging:  staging,
+		staging:     staging,
+		tunnelState: vpn.StateDown,
 	}
 }
 
@@ -84,9 +87,31 @@ func (e *networkEngine) SetTopology(topo *vpn.NetworkTopology, tunnelUp bool) {
 	e.stateMu.Unlock()
 }
 
+func (e *networkEngine) SetTunnelState(state vpn.TunnelState) {
+	e.stateMu.Lock()
+	e.tunnelState = state
+	e.stateMu.Unlock()
+}
+
+func effectiveFailClosed(policy *appmgr.PolicyEngine, state vpn.TunnelState) bool {
+	if policy == nil || !policy.KillSwitchFailClosed() {
+		return false
+	}
+	if policy.IgnoreKillSwitchOnDisconnect() && state == vpn.StateDown {
+		return false
+	}
+	return true
+}
+
 func (e *networkEngine) SetDNSHook(hook PacketHook) {
 	e.stateMu.Lock()
 	e.dnsHook = hook
+	e.stateMu.Unlock()
+}
+
+func (e *networkEngine) SetDNSGuard(guard *DNSGuard) {
+	e.stateMu.Lock()
+	e.dnsGuard = guard
 	e.stateMu.Unlock()
 }
 
@@ -170,7 +195,6 @@ func (e *networkEngine) runLoop(ctx context.Context, handle uintptr, done chan s
 
 		parsed, ok := ParseIPv4Transport(pkt)
 		if !ok {
-			// Pass through non-TCP/UDP or malformed frames untouched
 			_, _ = e.dll.Send(handle, pkt, &addr)
 			continue
 		}
@@ -181,7 +205,6 @@ func (e *networkEngine) runLoop(ctx context.Context, handle uintptr, done chan s
 		dnsHook := e.dnsHook
 		e.stateMu.RUnlock()
 
-		// Optional DNS Guard hook (T11)
 		if dnsHook != nil && dnsHook(pkt, parsed, &addr, topo, policy) {
 			continue
 		}
@@ -199,6 +222,7 @@ func (e *networkEngine) handleOutbound(handle uintptr, pkt []byte, parsed Parsed
 	policy := e.policy
 	topo := e.topology
 	tunnelUp := e.tunnelUp
+	tunnelState := e.tunnelState
 	e.stateMu.RUnlock()
 
 	if policy == nil || !policy.Enabled() || policy.Mode() == "global" {
@@ -206,7 +230,6 @@ func (e *networkEngine) handleOutbound(handle uintptr, pkt []byte, parsed Parsed
 		return
 	}
 
-	// Fast path: check existing NAT session first (zero PID lookup overhead for established flows!)
 	origFlow := FlowKey{
 		Proto:      parsed.Proto,
 		LocalAddr:  parsed.SrcIP,
@@ -217,7 +240,7 @@ func (e *networkEngine) handleOutbound(handle uintptr, pkt []byte, parsed Parsed
 	if entry, ok := e.nat.LookupOutbound(origFlow); ok {
 		if entry.Decision.UseVPN() {
 			if !tunnelUp || topo == nil || topo.Tunnel == nil {
-				if policy.KillSwitchFailClosed() {
+				if effectiveFailClosed(policy, tunnelState) {
 					e.packetsDropped.Add(1)
 					return
 				}
@@ -227,7 +250,6 @@ func (e *networkEngine) handleOutbound(handle uintptr, pkt []byte, parsed Parsed
 			e.injectNATOutbound(handle, pkt, parsed, addr, entry)
 			return
 		}
-		// Exclude mode direct NAT session (rerouted to physical NIC)
 		if entry.TargetIfIdx != 0 && entry.NATLocalAddr.IsValid() {
 			e.injectNATOutbound(handle, pkt, parsed, addr, entry)
 			return
@@ -236,11 +258,9 @@ func (e *networkEngine) handleOutbound(handle uintptr, pkt []byte, parsed Parsed
 		return
 	}
 
-	// Slow path (new flow): resolve owning PID via SocketTracker + iphlpapi fallback
 	sk := SocketKey{Proto: parsed.Proto, LocalPort: parsed.SrcPort}
 	pid, ok := e.tracker.LookupWithFallback(sk)
 	if !ok {
-		// Hold briefly in StagingQueue (25ms) waiting for WINDIVERT_LAYER_SOCKET event
 		if e.staging.Enqueue(StagedPacket{
 			Key:       sk,
 			RawPacket: pkt,
@@ -251,8 +271,7 @@ func (e *networkEngine) handleOutbound(handle uintptr, pkt []byte, parsed Parsed
 			e.stagingQueued.Add(1)
 			return
 		}
-		// Queue saturated: fail-closed drops packet so TCP/QUIC safely retries
-		if policy.KillSwitchFailClosed() {
+		if effectiveFailClosed(policy, tunnelState) {
 			e.packetsDropped.Add(1)
 			return
 		}
@@ -268,6 +287,7 @@ func (e *networkEngine) processOutboundWithPID(handle uintptr, pkt []byte, parse
 	policy := e.policy
 	topo := e.topology
 	tunnelUp := e.tunnelUp
+	tunnelState := e.tunnelState
 	e.stateMu.RUnlock()
 
 	if policy == nil {
@@ -277,12 +297,11 @@ func (e *networkEngine) processOutboundWithPID(handle uintptr, pkt []byte, parse
 
 	procInfo, err := e.resolver.Resolve(pid)
 	if err != nil {
-		// Unresolvable system/PPL process -> pass through in include mode, or fail-closed in exclude mode
 		if policy.Mode() == "include" {
 			e.reinjectOriginal(handle, pkt, addr, false)
 			return
 		}
-		if policy.KillSwitchFailClosed() && !tunnelUp {
+		if effectiveFailClosed(policy, tunnelState) && !tunnelUp {
 			e.packetsDropped.Add(1)
 			return
 		}
@@ -304,14 +323,13 @@ func (e *networkEngine) processOutboundWithPID(handle uintptr, pkt []byte, parse
 		RemotePort: parsed.DstPort,
 	}
 
-	// Case A: Include mode — selected app MUST go to Wintun (VPN), unselected stays direct natively
 	if policy.Mode() == "include" {
 		if !decision.UseVPN() {
 			e.reinjectOriginal(handle, pkt, addr, false)
 			return
 		}
 		if !tunnelUp || topo == nil || topo.Tunnel == nil || !topo.Tunnel.IPv4.IsValid() {
-			if policy.KillSwitchFailClosed() {
+			if effectiveFailClosed(policy, tunnelState) {
 				e.packetsDropped.Add(1)
 				return
 			}
@@ -330,17 +348,15 @@ func (e *networkEngine) processOutboundWithPID(handle uintptr, pkt []byte, parse
 		return
 	}
 
-	// Case B: Exclude mode — default route is Wintun; excluded app MUST be steered to Physical NIC
 	if policy.Mode() == "exclude" {
 		if decision.UseVPN() {
-			if !tunnelUp && policy.KillSwitchFailClosed() {
+			if !tunnelUp && effectiveFailClosed(policy, tunnelState) {
 				e.packetsDropped.Add(1)
 				return
 			}
 			e.reinjectOriginal(handle, pkt, addr, true)
 			return
 		}
-		// Excluded app -> SNAT to Physical NIC
 		if topo != nil && topo.Physical != nil && topo.Physical.IPv4.IsValid() {
 			entry, _ := e.nat.GetOrCreateOutbound(
 				origFlow,
@@ -359,7 +375,6 @@ func (e *networkEngine) processOutboundWithPID(handle uintptr, pkt []byte, parse
 }
 
 func (e *networkEngine) handleInbound(handle uintptr, pkt []byte, parsed ParsedIPv4Packet, addr *winDivertAddress) {
-	// For inbound reply packets, Local is Dst and Remote is Src
 	inFlow := FlowKey{
 		Proto:      parsed.Proto,
 		LocalAddr:  parsed.DstIP,
@@ -386,6 +401,20 @@ func (e *networkEngine) handleInbound(handle uintptr, pkt []byte, parsed ParsedI
 }
 
 func (e *networkEngine) injectNATOutbound(handle uintptr, pkt []byte, parsed ParsedIPv4Packet, addr *winDivertAddress, entry NATEntry) {
+	if entry.Decision.UseVPN() {
+		ClampTCPSYNMSS(pkt, parsed.IHL, parsed.Proto, 1360)
+		if !RewriteIPv4SNAT(pkt, parsed.IHL, parsed.Proto, entry.NATLocalAddr, entry.NATLocalPort) {
+			e.packetsDropped.Add(1)
+			return
+		}
+		if !vpn.InjectOutboundPacket(pkt) {
+			e.packetsDropped.Add(1)
+			return
+		}
+		e.packetsToVPN.Add(1)
+		return
+	}
+
 	if !RewriteIPv4SNAT(pkt, parsed.IHL, parsed.Proto, entry.NATLocalAddr, entry.NATLocalPort) {
 		e.packetsDropped.Add(1)
 		return
@@ -396,14 +425,67 @@ func (e *networkEngine) injectNATOutbound(handle uintptr, pkt []byte, parsed Par
 	addr.Network().SubIfIdx = 0
 
 	if _, err := e.dll.Send(handle, pkt, addr); err != nil {
-		// Fail-closed: NEVER fall back to original interface if target injection fails!
 		e.packetsDropped.Add(1)
 		return
 	}
-	if entry.Decision.UseVPN() {
-		e.packetsToVPN.Add(1)
-	} else {
-		e.packetsDirect.Add(1)
+	e.packetsDirect.Add(1)
+}
+
+// HandleTunnelInbound intercepts decrypted IPv4 replies from wireguard-go tun.Write,
+// performs reverse DNAT (or DNS restore), and injects them as inbound packets via WinDivert.
+func (e *networkEngine) HandleTunnelInbound(pkt []byte) bool {
+	parsed, ok := ParseIPv4Transport(pkt)
+	if !ok {
+		return false
+	}
+
+	e.stateMu.RLock()
+	dnsGuard := e.dnsGuard
+	e.stateMu.RUnlock()
+
+	if dnsGuard != nil && parsed.Proto == ProtoUDP && parsed.SrcPort == dnsPort {
+		cp := append([]byte(nil), pkt...)
+		if returnIfIdx, matched := dnsGuard.RewriteInbound(cp, parsed); matched {
+			e.injectInboundOS(cp, returnIfIdx)
+			return true
+		}
+	}
+
+	inFlow := FlowKey{
+		Proto:      parsed.Proto,
+		LocalAddr:  parsed.DstIP,
+		LocalPort:  parsed.DstPort,
+		RemoteAddr: parsed.SrcIP,
+		RemotePort: parsed.SrcPort,
+	}
+	entry, ok := e.nat.LookupInbound(inFlow)
+	if !ok {
+		return false
+	}
+
+	cp := append([]byte(nil), pkt...)
+	if !RewriteIPv4DNAT(cp, parsed.IHL, parsed.Proto, entry.OrigLocalAddr, entry.OrigLocalPort) {
+		e.packetsDropped.Add(1)
+		return true
+	}
+	e.injectInboundOS(cp, entry.ReturnIfIdx)
+	return true
+}
+
+func (e *networkEngine) injectInboundOS(pkt []byte, returnIfIdx uint32) {
+	e.handleMu.Lock()
+	h := e.handle
+	e.handleMu.Unlock()
+	if h == 0 {
+		return
+	}
+	var addr winDivertAddress
+	addr.SetOutbound(false)
+	addr.SetImpostor(true)
+	addr.Network().IfIdx = returnIfIdx
+	addr.Network().SubIfIdx = 0
+	if _, err := e.dll.Send(h, pkt, &addr); err != nil {
+		e.packetsDropped.Add(1)
 	}
 }
 
@@ -436,11 +518,11 @@ func (e *networkEngine) runHousekeeping(ctx context.Context, handle uintptr) {
 			}
 			e.stateMu.RLock()
 			policy := e.policy
+			tunnelState := e.tunnelState
 			e.stateMu.RUnlock()
 
 			for _, sp := range expired {
 				e.stagingExpired.Add(1)
-				// Final fallback attempt before expiry drop
 				if pid, ok := e.tracker.LookupWithFallback(sp.Key); ok {
 					var addr winDivertAddress
 					addr.SetOutbound(sp.Outbound)
@@ -451,14 +533,13 @@ func (e *networkEngine) runHousekeeping(ctx context.Context, handle uintptr) {
 						continue
 					}
 				}
-				if policy != nil && !policy.KillSwitchFailClosed() {
+				if policy != nil && !effectiveFailClosed(policy, tunnelState) {
 					var addr winDivertAddress
 					addr.SetOutbound(sp.Outbound)
 					addr.Network().IfIdx = sp.IfIdx
 					addr.Network().SubIfIdx = sp.SubIfIdx
 					_, _ = e.dll.Send(handle, sp.RawPacket, &addr)
 				} else {
-					// Fail-closed: drop unresolved first packet; TCP SYN / QUIC Initial retries cleanly
 					e.packetsDropped.Add(1)
 				}
 			}

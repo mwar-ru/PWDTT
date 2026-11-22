@@ -48,6 +48,7 @@ describe('splitTunnelApi helpers & Wails binding bridge', () => {
       enabled: true,
       mode: 'include',
       kill_switch: 'fail_closed',
+      ignore_kill_switch_on_disconnect: true,
       wfp_crash_mode: 'dynamic',
       system_dns: 'tunnel_dns',
       portable_env_paths: true,

@@ -322,6 +322,7 @@ func (w *WG) applyWindows(conf string, turnIPs []string, logf wgLogFunc) (retErr
 	if err != nil {
 		return fmt.Errorf("create TUN: %w", err)
 	}
+	tunDev = vpn.WrapTunDevice(tunDev)
 	w.activeTun = tunDev
 
 	// Create userspace WireGuard device

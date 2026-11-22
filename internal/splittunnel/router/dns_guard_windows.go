@@ -20,7 +20,7 @@ func newDNSPacketHook(guard *DNSGuard, eng *networkEngine) PacketHook {
 			return false
 		}
 
-		// Inbound UDP/53 reply from tunnel DNS -> restore original DNS server & local IP
+		// Inbound UDP/53 reply (fallback if it arrives via WinDivert)
 		if !addr.Outbound() {
 			if parsed.SrcPort != dnsPort {
 				return false
@@ -44,7 +44,7 @@ func newDNSPacketHook(guard *DNSGuard, eng *networkEngine) PacketHook {
 			return true
 		}
 
-		// Outbound fast reject: skip everything except UDP/53 (DoH 443 passes straight through)
+		// Outbound fast reject: skip everything except UDP/53 (DoH 443 untouched)
 		if parsed.DstPort != dnsPort {
 			return false
 		}
@@ -74,23 +74,12 @@ func newDNSPacketHook(guard *DNSGuard, eng *networkEngine) PacketHook {
 			return false
 		}
 
-		targetIfIdx, ok := guard.RewriteOutbound(pkt, parsed, addr.Network().IfIdx, topo)
-		if !ok {
+		if _, ok := guard.RewriteOutbound(pkt, parsed, addr.Network().IfIdx, topo); !ok {
 			return false
 		}
 
-		addr.SetImpostor(true)
-		addr.SetOutbound(true)
-		addr.Network().IfIdx = targetIfIdx
-		addr.Network().SubIfIdx = 0
-
-		eng.handleMu.Lock()
-		h := eng.handle
-		eng.handleMu.Unlock()
-		if h == 0 {
-			return false
-		}
-		if _, err := eng.dll.Send(h, pkt, addr); err != nil {
+		// Feed redirected DNS query straight into wireguard-go tun.Device
+		if !vpn.InjectOutboundPacket(pkt) {
 			eng.packetsDropped.Add(1)
 			return true
 		}
