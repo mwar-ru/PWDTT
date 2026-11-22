@@ -6,34 +6,38 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
 
-// UpdateInfo — информация о доступном обновлении.
+const githubLatestReleaseURL = "https://api.github.com/repos/mwar-ru/mwPWDTT_windows/releases/latest"
+
 type UpdateInfo struct {
-	Available bool   `json:"available"` // есть ли обновление
-	Version   string `json:"version"`   // версия обновления
-	URL       string `json:"url"`       // ссылка на скачивание
-	Body      string `json:"body"`      // описание изменений (changelog)
+	Available    bool   `json:"available"`
+	Version      string `json:"version"`
+	URL          string `json:"url"`
+	Body         string `json:"body"`
+	ChecksumsURL string `json:"checksumsUrl"`
+	AssetName    string `json:"assetName"`
 }
 
-// CheckUpdate проверяет наличие обновлений на GitHub.
-// Репозиторий: luminescq/PWDTT.
-// Возвращает ошибку если сеть недоступна или API недоступен.
 func CheckUpdate(currentVersion string) (*UpdateInfo, error) {
-	url := "https://api.github.com/repos/luminescq/PWDTT/releases/latest"
-
 	client := &http.Client{Timeout: 8 * time.Second}
-	resp, err := client.Get(url)
+	req, err := http.NewRequest(http.MethodGet, githubLatestReleaseURL, nil)
 	if err != nil {
-		// Сеть недоступна или таймаут
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "mwPWDTT_windows")
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
 		return nil, fmt.Errorf("network error: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("github api status: %d", resp.StatusCode)
 	}
 
@@ -44,6 +48,7 @@ func CheckUpdate(currentVersion string) (*UpdateInfo, error) {
 
 	var release struct {
 		TagName string `json:"tag_name"`
+		HTMLURL string `json:"html_url"`
 		Body    string `json:"body"`
 		Assets  []struct {
 			BrowserDownloadURL string `json:"browser_download_url"`
@@ -54,64 +59,42 @@ func CheckUpdate(currentVersion string) (*UpdateInfo, error) {
 		return nil, fmt.Errorf("parse response: %w", err)
 	}
 
-	// Сравниваем версии: latest > current?
-	latest := strings.TrimPrefix(release.TagName, "v")
-	log.Printf("[UPDATE] Release: %s, Current: %s, isNewer: %v", latest, currentVersion, isNewer(latest, currentVersion))
-	if !isNewer(latest, currentVersion) {
+	latest := strings.TrimPrefix(strings.TrimSpace(release.TagName), "v")
+	current := strings.TrimPrefix(strings.TrimSpace(currentVersion), "v")
+	log.Printf("[UPDATE] Release: %s, Current: %s, isNewer: %v", latest, current, isNewer(latest, current))
+	if !isNewer(latest, current) {
 		return &UpdateInfo{Available: false}, nil
 	}
 
-	// Ищем ссылку на скачивание для текущей ОС
-	var downloadURL string
-	osName := runtime.GOOS // "linux", "windows" или "darwin"
-	// Возможные синонимы ОС в имени ассета
-	osAliases := []string{osName}
-	if osName == "darwin" {
-		osAliases = append(osAliases, "macos", "mac", "osx")
-	}
-	// Подходящие маркеры архитектуры (darwin собирается universal)
-	archMarkers := []string{runtime.GOARCH}
-	if osName == "darwin" {
-		archMarkers = append(archMarkers, "universal", "arm64", "amd64")
-	} else {
-		archMarkers = append(archMarkers, "amd64", "x86_64")
-	}
+	var downloadURL, checksumsURL, assetName string
 	for _, asset := range release.Assets {
-		name := strings.ToLower(asset.Name)
-		osOK := false
-		for _, a := range osAliases {
-			if strings.Contains(name, a) {
-				osOK = true
-				break
-			}
+		low := strings.ToLower(asset.Name)
+		if strings.HasSuffix(low, ".zip") && strings.Contains(low, "windows") && downloadURL == "" {
+			downloadURL = asset.BrowserDownloadURL
+			assetName = asset.Name
 		}
-		if !osOK {
-			continue
+		if low == "sha256sums.txt" {
+			checksumsURL = asset.BrowserDownloadURL
 		}
-		for _, m := range archMarkers {
-			if strings.Contains(name, m) {
-				downloadURL = asset.BrowserDownloadURL
-				break
-			}
-		}
-		if downloadURL != "" {
-			break
-		}
+	}
+	if downloadURL == "" {
+		downloadURL = release.HTMLURL
 	}
 
 	return &UpdateInfo{
-		Available: true,
-		Version:   latest,
-		URL:       downloadURL,
-		Body:      release.Body,
+		Available:    true,
+		Version:      latest,
+		URL:          downloadURL,
+		Body:         release.Body,
+		ChecksumsURL: checksumsURL,
+		AssetName:    assetName,
 	}, nil
 }
 
-// isNewer проверяет что a > b (semver сравнение).
 func isNewer(a, b string) bool {
 	av := parseVersion(a)
 	bv := parseVersion(b)
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 4; i++ {
 		if av[i] > bv[i] {
 			return true
 		}
@@ -122,12 +105,39 @@ func isNewer(a, b string) bool {
 	return false
 }
 
-func parseVersion(v string) [3]int {
-	var result [3]int
-	v = strings.TrimPrefix(v, "v")
-	parts := strings.SplitN(v, ".", 3)
+func parseVersion(v string) [4]int {
+	var result [4]int
+	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+	mainPart := v
+	if idx := strings.IndexByte(v, '-'); idx >= 0 {
+		mainPart = v[:idx]
+		suf := strings.ToLower(v[idx+1:])
+		if strings.HasPrefix(suf, "st.") {
+			num := suf[3:]
+			if cut := strings.IndexAny(num, "-+."); cut >= 0 {
+				num = num[:cut]
+			}
+			if n, err := strconv.Atoi(num); err == nil {
+				result[3] = n
+			}
+		}
+	}
+	parts := strings.SplitN(mainPart, ".", 3)
 	for i, p := range parts {
-		fmt.Sscanf(p, "%d", &result[i])
+		if n, err := strconv.Atoi(p); err == nil {
+			result[i] = n
+		}
 	}
 	return result
+}
+
+func parseSHA256ForAsset(content, assetName string) string {
+	target := strings.ToLower(strings.TrimSpace(assetName))
+	for _, line := range strings.Split(content, "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) >= 2 && strings.ToLower(strings.TrimPrefix(fields[1], "*")) == target {
+			return strings.ToLower(fields[0])
+		}
+	}
+	return ""
 }

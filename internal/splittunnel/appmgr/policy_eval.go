@@ -100,6 +100,9 @@ func NewPolicyEngineWithEnv(cfg settings.Config, selfExePath string, getenv func
 
 	rules := make(map[string]compiledRule, len(cfg.Apps))
 	for _, app := range cfg.Apps {
+		if app.Disabled {
+			continue
+		}
 		normPath := NormalizeWindowsPathWithEnv(app.ExePath, getenv)
 		if normPath == "" {
 			continue

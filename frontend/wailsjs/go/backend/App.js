@@ -42,6 +42,10 @@ export function GetVersion() {
   return window['go']['backend']['App']['GetVersion']();
 }
 
+export function InstallUpdate() {
+  return window['go']['backend']['App']['InstallUpdate']();
+}
+
 export function IsRunning() {
   return window['go']['backend']['App']['IsRunning']();
 }

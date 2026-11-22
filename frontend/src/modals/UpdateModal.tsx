@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { IconX, IconDownload, IconRocket } from '@tabler/icons-react';
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime';
 import { renderMarkdown } from '../lib/utils/markdown';
@@ -9,8 +10,31 @@ interface Props {
   onClose: () => void;
 }
 
+const RELEASES_FALLBACK = 'https://github.com/mwar-ru/mwPWDTT_windows/releases';
+
 export default function UpdateModal({ version, body, url, onClose }: Props) {
   const sanitizedHtml = renderMarkdown(body);
+  const [updating, setUpdating] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleInstall = async () => {
+    setUpdating(true);
+    setError('');
+    try {
+      const fn = (window as unknown as {
+        go?: { backend?: { App?: { InstallUpdate?: () => Promise<void> } } };
+      })?.go?.backend?.App?.InstallUpdate;
+      if (!fn) {
+        BrowserOpenURL(url || RELEASES_FALLBACK);
+        onClose();
+        return;
+      }
+      await fn();
+    } catch (e) {
+      setUpdating(false);
+      setError(`Ошибка автообновления: ${String(e)}`);
+    }
+  };
 
   return (
     <>
@@ -32,16 +56,18 @@ export default function UpdateModal({ version, body, url, onClose }: Props) {
         .upd-body code { font-size: 12px; background: var(--bg-3); padding: 1px 5px; border-radius: 4px; font-family: monospace; }
         .upd-body a { color: var(--accent); text-decoration: none; }
         .upd-body a:hover { text-decoration: underline; }
+        .upd-error { font-size: 12px; color: #ef4444; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; word-break: break-word; }
         .upd-actions { display: flex; gap: 10px; }
         .upd-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 11px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; font-family: 'Geist', sans-serif; }
+        .upd-btn:disabled { opacity: 0.6; cursor: wait; }
         .upd-btn--primary { background: var(--accent); color: var(--accent-fg); border: none; }
-        .upd-btn--primary:hover { opacity: 0.9; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+        .upd-btn--primary:hover:not(:disabled) { opacity: 0.9; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
         .upd-btn--secondary { background: transparent; color: var(--text-3); border: 1px solid var(--border); }
-        .upd-btn--secondary:hover { border-color: var(--text-3); color: var(--text); }
+        .upd-btn--secondary:hover:not(:disabled) { border-color: var(--text-3); color: var(--text); }
       `}</style>
-      <div className="upd-overlay" onClick={onClose}>
+      <div className="upd-overlay" onClick={updating ? undefined : onClose}>
         <div className="upd-modal" onClick={e => e.stopPropagation()}>
-          <button type="button" className="upd-close" onClick={onClose} aria-label="Закрыть"><IconX size={18} /></button>
+          <button type="button" className="upd-close" onClick={onClose} disabled={updating} aria-label="Закрыть"><IconX size={18} /></button>
 
           <div className="upd-header">
             <div className="upd-icon"><IconRocket size={20} /></div>
@@ -52,14 +78,21 @@ export default function UpdateModal({ version, body, url, onClose }: Props) {
           </div>
 
           {body && <div className="upd-body" dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />}
+          {error && <div className="upd-error">{error}</div>}
 
           <div className="upd-actions">
-            <button type="button" className="upd-btn upd-btn--secondary" onClick={onClose}>
-              Позже
-            </button>
-            <button type="button" className="upd-btn upd-btn--primary" onClick={() => { BrowserOpenURL(url || 'https://github.com/luminescq/PWDTT/releases'); onClose(); }}>
+            {error ? (
+              <button type="button" className="upd-btn upd-btn--secondary" onClick={() => { BrowserOpenURL(url || RELEASES_FALLBACK); onClose(); }}>
+                Скачать вручную
+              </button>
+            ) : (
+              <button type="button" className="upd-btn upd-btn--secondary" onClick={onClose} disabled={updating}>
+                Позже
+              </button>
+            )}
+            <button type="button" className="upd-btn upd-btn--primary" onClick={() => void handleInstall()} disabled={updating}>
               <IconDownload size={16} />
-              Скачать
+              {updating ? 'Обновление...' : 'Обновить'}
             </button>
           </div>
         </div>

@@ -30,6 +30,7 @@ type AppConfig struct {
 	Name          string `json:"name"`
 	ExePath       string `json:"exe_path"`
 	MatchChildren bool   `json:"match_children"`
+	Disabled      bool   `json:"disabled,omitempty"`
 }
 
 // Config represents the split tunneling configuration schema v1.

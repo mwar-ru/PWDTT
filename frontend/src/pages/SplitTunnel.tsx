@@ -164,6 +164,14 @@ export default function SplitTunnel() {
     void persistConfig({ ...cfg, apps: nextApps });
   };
 
+  const handleToggleAppEnabled = (target: AppConfig) => {
+    const key = normalizeAppKey(target.exe_path);
+    const nextApps = cfg.apps.map(a =>
+      normalizeAppKey(a.exe_path) === key ? { ...a, disabled: !a.disabled } : a
+    );
+    void persistConfig({ ...cfg, apps: nextApps });
+  };
+
   const handleRemoveApp = (target: AppConfig) => {
     const key = normalizeAppKey(target.exe_path);
     const nextApps = cfg.apps.filter(a => normalizeAppKey(a.exe_path) !== key);
@@ -405,6 +413,17 @@ export default function SplitTunnel() {
                   </span>
                 </div>
                 <div className="st-app-actions">
+                  <label
+                    className="st-switch"
+                    title={app.disabled ? 'Включить правило для приложения' : 'Временно выключить правило для приложения'}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!app.disabled}
+                      onChange={() => handleToggleAppEnabled(app)}
+                    />
+                    <span>{app.disabled ? 'Выкл' : 'Вкл'}</span>
+                  </label>
                   <label className="st-switch" title="Применять правило к дочерним процессам">
                     <input
                       type="checkbox"

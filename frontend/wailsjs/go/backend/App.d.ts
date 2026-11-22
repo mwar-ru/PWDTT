@@ -23,6 +23,8 @@ export function GetProfile(arg1:string):Promise<backend.ProfileData>;
 
 export function GetVersion():Promise<string>;
 
+export function InstallUpdate():Promise<void>;
+
 export function IsRunning():Promise<boolean>;
 
 export function ListProfiles():Promise<Record<string, backend.ProfileData>>;

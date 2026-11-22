@@ -104,6 +104,8 @@ export namespace backend {
 	    version: string;
 	    url: string;
 	    body: string;
+	    checksumsUrl: string;
+	    assetName: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new UpdateInfo(source);
@@ -115,6 +117,8 @@ export namespace backend {
 	        this.version = source["version"];
 	        this.url = source["url"];
 	        this.body = source["body"];
+	        this.checksumsUrl = source["checksumsUrl"];
+	        this.assetName = source["assetName"];
 	    }
 	}
 
@@ -165,6 +169,7 @@ export namespace settings {
 	    name: string;
 	    exe_path: string;
 	    match_children: boolean;
+	    disabled?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppConfig(source);
@@ -175,6 +180,7 @@ export namespace settings {
 	        this.name = source["name"];
 	        this.exe_path = source["exe_path"];
 	        this.match_children = source["match_children"];
+	        this.disabled = source["disabled"];
 	    }
 	}
 	export class Config {

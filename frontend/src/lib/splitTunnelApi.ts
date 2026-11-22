@@ -7,6 +7,7 @@ export interface AppConfig {
   name: string;
   exe_path: string;
   match_children: boolean;
+  disabled?: boolean;
 }
 
 export interface SplitTunnelConfig {
