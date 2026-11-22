@@ -20,54 +20,56 @@
 }
 
 :root {
-  --bg: #f5f5f7;
-  --bg-2: #ededf0;
-  --bg-3: #e2e2e6;
+  --bg: #ffffff;
+  --bg-2: #eff5ff;
+  --bg-3: #dbeafe;
   --surface: #ffffff;
-  --border: #d0d0d4;
-  --border-2: #e4e4e6;
-  --text: #1a1a1f;
-  --text-2: #4a4a55;
-  --text-3: #6e6e80;
-  --text-4: #9a9aaa;
-  --accent: #3a3a42;
+  --border: #cbd5e1;
+  --border-2: #e2e8f0;
+  --text: #0f172a;
+  --text-2: #334155;
+  --text-3: #64748b;
+  --text-4: #94a3b8;
+  --accent: #2563eb;
+  --accent-dim: rgba(37, 99, 235, 0.22);
   --accent-fg: #ffffff;
-  --seg-bg: #e0e0e4;
-  --seg-text: #4a4a55;
-  --input-border: #c0c0c4;
+  --seg-bg: #e2ecff;
+  --seg-text: #1e3a8a;
+  --input-border: #cbd5e1;
   --input-bg: #ffffff;
-  --sidebar-from: #4a4a52;
-  --sidebar-to: #1a1a20;
-  --sidebar-btn-active: #000000;
-  --shadow: 0 8px 40px rgba(0,0,0,0.1);
-  --overlay-bg: rgba(0,0,0,0.25);
+  --sidebar-from: #2563eb;
+  --sidebar-to: #1e3a8a;
+  --sidebar-text: #ffffff;
+  --sidebar-btn-active: #172554;
+  --shadow: 0 8px 40px rgba(15, 23, 42, 0.12);
+  --overlay-bg: rgba(15, 23, 42, 0.28);
 }
 
-/* ─── Dark base — Graphite silver (no purple) ─── */
+/* ─── Dark base — Deep Navy Blue ─── */
 [data-theme="dark"] {
-  --bg: #18181d;
-  --bg-2: #1f1f26;
-  --bg-3: #28282f;
-  --surface: #222228;
-  --border: #333338;
-  --border-2: #2a2a30;
-  --text: #eaeaef;
-  --text-2: #b5b5c0;
-  --text-3: #80809a;
-  --text-4: #5a5a62;
-  --accent: #a0a0a8;
-  --accent-dim: rgba(160,160,168,0.25);
-  --accent-fg: #18181d;
-  --seg-bg: #2c2c32;
-  --seg-text: #b5b5c0;
-  --input-border: #404048;
-  --input-bg: #1f1f26;
-  --sidebar-from: #505058;
-  --sidebar-to: #1c1c22;
-  --sidebar-text: #eaeaef;
-  --sidebar-btn-active: #000000;
-  --shadow: 0 8px 40px rgba(0,0,0,0.45);
-  --overlay-bg: rgba(0,0,0,0.55);
+  --bg: #0b1426;
+  --bg-2: #12203b;
+  --bg-3: #1b2f54;
+  --surface: #0f1b33;
+  --border: #243b63;
+  --border-2: #1a2d4f;
+  --text: #eef4ff;
+  --text-2: #b4c7e7;
+  --text-3: #7d96bf;
+  --text-4: #4e668c;
+  --accent: #3b82f6;
+  --accent-dim: rgba(59, 130, 246, 0.30);
+  --accent-fg: #ffffff;
+  --seg-bg: #162647;
+  --seg-text: #b4c7e7;
+  --input-border: #2a4370;
+  --input-bg: #0d182e;
+  --sidebar-from: #1d4ed8;
+  --sidebar-to: #091329;
+  --sidebar-text: #eef4ff;
+  --sidebar-btn-active: #060e20;
+  --shadow: 0 8px 40px rgba(2, 8, 23, 0.55);
+  --overlay-bg: rgba(2, 8, 23, 0.65);
 }
 
 #root {
