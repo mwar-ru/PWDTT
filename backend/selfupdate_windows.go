@@ -94,44 +94,62 @@ func (a *App) InstallUpdate() error {
 
 	a.Disconnect()
 
-	ps := fmt.Sprintf(`$ErrorActionPreference = 'SilentlyContinue'
+	ps := fmt.Sprintf(`$ErrorActionPreference = 'Continue'
+$log = Join-Path $env:TEMP 'mwpwdtt-last-update.log'
+function Log($m) { Add-Content -LiteralPath $log -Value ("$(Get-Date -Format 'HH:mm:ss') " + $m) -ErrorAction SilentlyContinue }
+Set-Content -LiteralPath $log -Value "=== mwPWDTT_windows self-update ===" -ErrorAction SilentlyContinue
 $p = %d
 $src = '%s'
 $dst = '%s'
 $exe = '%s'
 $tmp = '%s'
-for ($i = 0; $i -lt 60; $i++) {
+Log "Waiting for PID $p to exit..."
+for ($i = 0; $i -lt 80; $i++) {
     if (-not (Get-Process -Id $p -ErrorAction SilentlyContinue)) { break }
     Start-Sleep -Milliseconds 300
 }
-Start-Sleep -Milliseconds 400
+Start-Sleep -Milliseconds 500
+Log "Copying files from $src to $dst"
 Get-ChildItem -LiteralPath $src -File | ForEach-Object {
     $to = Join-Path $dst $_.Name
     if (($_.Name -ieq 'WinDivert64.sys' -or $_.Name -ieq 'WinDivert.dll') -and (Test-Path -LiteralPath $to)) {
         $h1 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
         $h2 = (Get-FileHash -LiteralPath $to -Algorithm SHA256).Hash
-        if ($h1 -eq $h2) { return }
+        if ($h1 -eq $h2) { Log "Skip unchanged $($_.Name)"; return }
     }
-    for ($t = 0; $t -lt 15; $t++) {
-        try { Copy-Item -LiteralPath $_.FullName -Destination $to -Force -ErrorAction Stop; break }
+    $ok = $false
+    for ($t = 0; $t -lt 20; $t++) {
+        try { Copy-Item -LiteralPath $_.FullName -Destination $to -Force -ErrorAction Stop; $ok = $true; break }
         catch { Start-Sleep -Milliseconds 350 }
     }
+    Log ("Copy $($_.Name): " + ($(if ($ok) { 'OK' } else { 'FAILED' })))
 }
-Start-Process -FilePath $exe -WorkingDirectory $dst
+Log "Launching $exe"
+Start-Process -FilePath $exe -WorkingDirectory $dst -WindowStyle Normal
 Start-Sleep -Seconds 2
 Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+Log "Done"
 `, os.Getpid(), escapePS(stageDir), escapePS(appDir), escapePS(filepath.Join(appDir, filepath.Base(newExe))), escapePS(tmpDir))
 
 	scriptPath := filepath.Join(tmpDir, "apply_update.ps1")
-	if err := os.WriteFile(scriptPath, []byte(ps), 0600); err != nil {
+	bom := append([]byte{0xEF, 0xBB, 0xBF}, []byte(ps)...)
+	if err := os.WriteFile(scriptPath, bom, 0600); err != nil {
 		_ = os.RemoveAll(tmpDir)
 		return err
 	}
 
-	cmd := exec.Command("powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", scriptPath)
+	psExe := "powershell.exe"
+	if sysRoot := os.Getenv("SystemRoot"); sysRoot != "" {
+		cand := filepath.Join(sysRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+		if _, err := os.Stat(cand); err == nil {
+			psExe = cand
+		}
+	}
+
+	cmd := exec.Command(psExe, "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", scriptPath)
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
-		CreationFlags: 0x08000000 | 0x00000008,
+		CreationFlags: 0x08000000 | 0x00000200,
 	}
 	if err := cmd.Start(); err != nil {
 		_ = os.RemoveAll(tmpDir)
