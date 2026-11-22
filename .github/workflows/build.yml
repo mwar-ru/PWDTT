@@ -2,9 +2,9 @@ name: Build
 
 on:
   push:
-    branches: [main, feat/windows-split-tunnel]
+    branches: [main]
   pull_request:
-    branches: [main, feat/windows-split-tunnel]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -12,11 +12,11 @@ jobs:
     name: Build Windows (Wails amd64)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -32,7 +32,7 @@ jobs:
         run: wails build -platform windows/amd64 -s
       - name: Upload Windows artifact
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: mwPWDTT_windows-amd64
           path: build/bin/mwPWDTT_windows.exe

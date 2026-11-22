@@ -2,17 +2,17 @@ name: Split Tunneling CI
 
 on:
   push:
-    branches: [feat/windows-split-tunnel, main]
+    branches: [main]
   pull_request:
-    branches: [feat/windows-split-tunnel, main]
+    branches: [main]
 
 jobs:
   go-linux-race-and-cross:
     name: Go (-race + Windows cross-compile)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - name: Run split-tunnel tests with race detector
@@ -28,8 +28,8 @@ jobs:
     name: Go Windows ABI & IP Helper Live Tests
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - name: Run Windows live unit & ABI tests
@@ -42,8 +42,8 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
