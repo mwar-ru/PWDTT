@@ -318,10 +318,19 @@ func (w *WG) applyWindows(conf string, turnIPs []string, logf wgLogFunc) (retErr
 
 	// Create wintun TUN interface
 	logf(fmt.Sprintf("Создание TUN интерфейса %q (mtu=%d)", wgIface, mtu))
-	tunDev, err := tun.CreateTUN(wgIface, mtu)
-	if err != nil {
-		return fmt.Errorf("create TUN: %w", err)
-	}
+tunDev, err := tun.CreateTUN(wgIface, mtu)
+if err != nil && shouldAttemptWintunRepair(err) {
+logf(fmt.Sprintf("Ошибка создания TUN (%v) — запускаем автовосстановление Wintun...", err))
+if repairErr := repairWintunDriver(logf); repairErr != nil {
+logf(fmt.Sprintf("Автовосстановление Wintun пропущено: %v", repairErr))
+} else {
+logf(fmt.Sprintf("Повторное создание TUN интерфейса %q (mtu=%d)", wgIface, mtu))
+tunDev, err = tun.CreateTUN(wgIface, mtu)
+}
+}
+if err != nil {
+return fmt.Errorf("create TUN: %w", err)
+}
 	tunDev = vpn.WrapTunDevice(tunDev)
 	w.activeTun = tunDev
 
