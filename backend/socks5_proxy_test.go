@@ -142,3 +142,56 @@ func TestSocks5CloseImmediateWithActiveUDPAndTCP(t *testing.T) {
 		t.Fatalf("srv.Close() took too long (%v) with active TCP+UDP sessions", elapsed)
 	}
 }
+
+func TestWGProxyApplyAndTeardownRealNetstack(t *testing.T) {
+	// Valid 32-byte base64 WG keys (test-only dummy keys)
+	conf := `[Interface]
+PrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+Address = 10.66.66.2/32
+DNS = 1.1.1.1
+MTU = 1280
+
+[Peer]
+PublicKey = BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=
+Endpoint = 127.0.0.1:51820
+AllowedIPs = 0.0.0.0/0
+`
+	// Pick a free ephemeral port
+	tmpLn, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := tmpLn.Addr().(*net.TCPAddr).Port
+	_ = tmpLn.Close()
+
+	w := &WG{}
+	w.SetProxyMode(true, port)
+	defer w.StopProxyServer()
+
+	// Cycle 1: apply -> teardown (must stay in DIRECT standby without panic or hang)
+	if err := w.applyProxy(conf, func(string) {}); err != nil {
+		t.Fatalf("applyProxy #1 failed: %v", err)
+	}
+	start := time.Now()
+	if !w.teardownProxy() {
+		t.Fatalf("teardownProxy #1 returned false")
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("teardownProxy #1 too slow: %v", elapsed)
+	}
+	if w.activeSocks == nil {
+		t.Fatalf("expected SOCKS5 standby listener to remain open in DIRECT mode")
+	}
+
+	// Cycle 2: re-apply reusing standby listener -> disable proxy mode -> teardown
+	if err := w.applyProxy(conf, func(string) {}); err != nil {
+		t.Fatalf("applyProxy #2 failed: %v", err)
+	}
+	w.SetProxyMode(false, port)
+	if !w.teardownProxy() {
+		t.Fatalf("teardownProxy #2 returned false")
+	}
+	if w.activeSocks != nil {
+		t.Fatalf("expected SOCKS5 listener closed when proxyMode=false")
+	}
+}

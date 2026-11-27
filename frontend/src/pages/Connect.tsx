@@ -22,7 +22,9 @@ import shapeLight from '../assets/shape-light.png';
 import shapeDark from '../assets/shape-dark.png';
 import powerIcon from '../assets/power-icon.png';
 import { splitTunnelApi } from '../lib/splitTunnelApi';
-import { enterProxyMode, leaveProxyMode, onProxyReconnect } from '../lib/utils/proxyModeGuard';
+import { enterProxyMode, leaveProxyMode, onProxyReconnect, syncProxyModeOnStartup } from '../lib/utils/proxyModeGuard';
+
+let autoConnectAttempted = false;
 import './Connect.css';
 
 const SERVER_ICONS: { key: string; render: (size: number) => React.ReactNode }[] = [
@@ -457,7 +459,9 @@ export default function Connect() {
       if (curState === 'connected' || curState === 'connecting') {
         pendingReconnectRef.current = true;
         tunnelStore.set('disconnecting');
-        void WailsDisconnect();
+        void WailsDisconnect().catch(() => {}).finally(() => {
+          tunnelStore.set('idle');
+        });
       }
     });
     return () => {
@@ -465,6 +469,24 @@ export default function Connect() {
       unsubReconnect();
     };
   }, [refreshSplitState]);
+
+  useEffect(() => {
+    if (autoConnectAttempted) return;
+    autoConnectAttempted = true;
+    const s = settingsStore.get();
+    if (!s.autoConnect) return;
+    const timer = setTimeout(() => {
+      if (tunnelStore.get() !== 'idle' || !selectedRef.current) return;
+      void syncProxyModeOnStartup(!!s.proxyMode, splitTunnelApi, s.proxyPort || 10808)
+        .catch(() => {})
+        .finally(() => {
+          if (tunnelStore.get() === 'idle' && selectedRef.current) {
+            void doConnectRef.current();
+          }
+        });
+    }, 500);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     if (tunnelState !== 'idle' || !pendingReconnectRef.current) return;
@@ -495,8 +517,12 @@ export default function Connect() {
         if (wasActive) {
           pendingReconnectRef.current = true;
           tunnelStore.set('disconnecting');
-          await WailsDisconnect();
           toastStore.show(`Режим SOCKS5 (127.0.0.1:${port}) — переподключение...`, 3500);
+          try {
+            await WailsDisconnect();
+          } finally {
+            tunnelStore.set('idle');
+          }
         } else {
           toastStore.show(
             guarded
@@ -511,13 +537,17 @@ export default function Connect() {
         if (wasActive) {
           pendingReconnectRef.current = true;
           tunnelStore.set('disconnecting');
-          await WailsDisconnect();
           toastStore.show(
             restored
               ? 'Обычный режим TUN (Split Tunneling восстановлен) — переподключение...'
               : 'Обычный режим TUN — переподключение...',
             3500,
           );
+          try {
+            await WailsDisconnect();
+          } finally {
+            tunnelStore.set('idle');
+          }
         } else {
           toastStore.show(
             restored

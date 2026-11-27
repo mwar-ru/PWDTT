@@ -86,18 +86,27 @@ func (w *WG) StopProxyServer() {
 	}
 }
 
-func (w *WG) applyProxy(conf string, logf wgLogFunc) error {
-	w.stateMu.Lock()
-	defer w.stateMu.Unlock()
-
+// closeProxyDeviceLocked safely closes activeDevice/activeTun without calling
+// netstack.netTun.Close() twice (device.Close() already closes its TUN; a second
+// netTun.Close() panics with "close of closed channel").
+func (w *WG) closeProxyDeviceLocked() {
 	if w.activeDevice != nil {
 		w.activeDevice.Close()
 		w.activeDevice = nil
+		w.activeTun = nil
+		return
 	}
 	if w.activeTun != nil {
 		_ = w.activeTun.Close()
 		w.activeTun = nil
 	}
+}
+
+func (w *WG) applyProxy(conf string, logf wgLogFunc) error {
+	w.stateMu.Lock()
+	defer w.stateMu.Unlock()
+
+	w.closeProxyDeviceLocked()
 
 	addr, mtuStr, _, wgConf := parseWGConfig(conf)
 	if addr == "" {
@@ -130,9 +139,11 @@ func (w *WG) applyProxy(conf string, logf wgLogFunc) error {
 
 	uapi := uapiConf(wgConf)
 	if err := dev.IpcSetOperation(strings.NewReader(uapi)); err != nil {
+		w.closeProxyDeviceLocked()
 		return fmt.Errorf("IpcSet: %w", err)
 	}
 	if err := dev.Up(); err != nil {
+		w.closeProxyDeviceLocked()
 		return fmt.Errorf("device up: %w", err)
 	}
 
@@ -147,10 +158,7 @@ func (w *WG) applyProxy(conf string, logf wgLogFunc) error {
 		}
 		srv, err := startSocks5Server(wantAddr, tnet)
 		if err != nil {
-			dev.Close()
-			_ = tunDev.Close()
-			w.activeDevice = nil
-			w.activeTun = nil
+			w.closeProxyDeviceLocked()
 			return err
 		}
 		w.activeSocks = srv
@@ -168,21 +176,13 @@ func (w *WG) teardownProxy() bool {
 	}
 	if w.activeSocks != nil {
 		if w.proxyMode {
-			// Keep SOCKS5 listening in DIRECT passthrough mode while proxyMode stays enabled.
 			w.activeSocks.SetDialer(directDialer{}, true)
 		} else {
 			_ = w.activeSocks.Close()
 			w.activeSocks = nil
 		}
 	}
-	if w.activeDevice != nil {
-		w.activeDevice.Close()
-		w.activeDevice = nil
-	}
-	if w.activeTun != nil {
-		_ = w.activeTun.Close()
-		w.activeTun = nil
-	}
+	w.closeProxyDeviceLocked()
 	w.proxyActive = false
 	return true
 }

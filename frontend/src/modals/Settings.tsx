@@ -150,6 +150,23 @@ export default function Settings({ onClose }: Props) {
           </div>
 
           <div className="st-row">
+            <span>Автоподключение при запуске</span>
+            <button
+              type="button"
+              className={`st-toggle st-toggle--${settings.autoConnect ? 'on' : 'off'}`}
+              aria-label={settings.autoConnect ? 'Отключить автоподключение' : 'Включить автоподключение'}
+              onClick={() => {
+                const next = !settings.autoConnect;
+                update('autoConnect', next);
+                toastStore.show(
+                  next ? 'Автоподключение при запуске включено' : 'Автоподключение при запуске выключено',
+                  2500,
+                );
+              }}
+            />
+          </div>
+
+          <div className="st-row">
             <span>Режим обфускации {!settings.obfsAccepted && <span className="st-badge">только latest</span>}</span>
             <div className="st-segment">
               <button type="button" className={`st-seg-btn${settings.obfsMode === 'audio' ? ' st-seg-btn--active' : ''}`} onClick={() => handleObfsClick('audio')}>Audio</button>
