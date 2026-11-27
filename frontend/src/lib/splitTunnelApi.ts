@@ -128,6 +128,7 @@ interface WailsSplitTunnelBinding {
   ListRunningApps(): Promise<RunningApp[]>;
   GetStatus(): Promise<StatusSnapshot>;
   ResetWfpRules(): Promise<void>;
+  SetProxySuspended?(suspended: boolean): Promise<void>;
   PickExecutableDialog(): Promise<string>;
   PickConfigFileDialog(existingOnly: boolean): Promise<string>;
   CheckUpstreamUpdate(): Promise<UpdateCheckResult>;
@@ -218,6 +219,12 @@ export const splitTunnelApi = {
   listRunningApps: () => requireBinding().ListRunningApps(),
   getStatus: () => requireBinding().GetStatus(),
   resetWfpRules: () => requireBinding().ResetWfpRules(),
+  async setProxySuspended(suspended: boolean): Promise<void> {
+    const b = getSplitTunnelBinding();
+    if (b?.SetProxySuspended) {
+      await b.SetProxySuspended(suspended);
+    }
+  },
   pickExecutableDialog: () => requireBinding().PickExecutableDialog(),
   pickConfigFileDialog: (existingOnly: boolean) =>
     requireBinding().PickConfigFileDialog(existingOnly),

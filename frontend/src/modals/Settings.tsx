@@ -7,6 +7,8 @@ import { BrowserOpenURL } from '../../wailsjs/runtime/runtime';
 import { logStore } from '../lib/stores/logStore';
 import { toastStore } from '../lib/stores/toastStore';
 import { getUpdatePauseState, setPauseNextUpdate } from '../lib/utils/updateSkip';
+import { splitTunnelApi } from '../lib/splitTunnelApi';
+import { enterProxyMode, leaveProxyMode } from '../lib/utils/proxyModeGuard';
 import './Settings.css';
 
 interface Props {
@@ -172,12 +174,25 @@ export default function Settings({ onClose }: Props) {
                 const next = !proxyEnabled;
                 update('proxyMode', next);
                 if (next && !settings.proxyPort) update('proxyPort', 10808);
-                toastStore.show(
-                  next
-                    ? `Режим SOCKS5 (127.0.0.1:${proxyPort}) — переподключитесь`
-                    : 'Обычный режим TUN — переподключитесь',
-                  3000,
-                );
+                if (next) {
+                  void enterProxyMode(splitTunnelApi).then(guarded => {
+                    toastStore.show(
+                      guarded
+                        ? `Режим SOCKS5 (127.0.0.1:${proxyPort}) — Split Tunneling скрыто приостановлен`
+                        : `Режим SOCKS5 (127.0.0.1:${proxyPort}) — переподключитесь`,
+                      3500,
+                    );
+                  });
+                } else {
+                  void leaveProxyMode(splitTunnelApi).then(restored => {
+                    toastStore.show(
+                      restored
+                        ? 'Обычный режим TUN — прежние настройки Split Tunneling восстановлены'
+                        : 'Обычный режим TUN — переподключитесь',
+                      3500,
+                    );
+                  });
+                }
               }}
             />
           </div>

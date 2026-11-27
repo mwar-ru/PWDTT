@@ -32,6 +32,8 @@ export function SaveConfig(arg1:settings.Config):Promise<settings.Config>;
 
 export function SetConfigPath(arg1:string,arg2:boolean):Promise<settings.Config>;
 
+export function SetProxySuspended(arg1:boolean):Promise<void>;
+
 export function Shutdown(arg1:context.Context):Promise<void>;
 
 export function Startup(arg1:context.Context):Promise<void>;

@@ -14,6 +14,9 @@ import type { LogLevel } from './lib/stores/logStore';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import { CheckUpdate } from '../wailsjs/go/backend/App';
 import { shouldNotifyUpdate } from './lib/utils/updateSkip';
+import { settingsStore } from './lib/store';
+import { splitTunnelApi } from './lib/splitTunnelApi';
+import { syncProxyModeOnStartup } from './lib/utils/proxyModeGuard';
 
 function useWdttPaste() {
   useEffect(() => {
@@ -85,6 +88,9 @@ function useUpdateChecker() {
 
 export default function App() {
   useWailsEvents();
+  useEffect(() => {
+    void syncProxyModeOnStartup(!!settingsStore.get().proxyMode, splitTunnelApi);
+  }, []);
   useWdttPaste();
   const { updateInfo, closeUpdate } = useUpdateChecker();
 

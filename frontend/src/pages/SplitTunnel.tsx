@@ -14,6 +14,7 @@ import {
 } from '@tabler/icons-react';
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime';
 import { toastStore } from '../lib/stores/toastStore';
+import { settingsStore } from '../lib/store';
 import {
   addOrUpdateApp,
   defaultSplitTunnelConfig,
@@ -272,6 +273,7 @@ export default function SplitTunnel() {
     );
   }
 
+  const proxyModeActive = !!settingsStore.get().proxyMode;
   const competingVPNs = status?.competing_vpns ?? [];
   const filteredRunning = runningApps.filter(a => {
     const q = runningFilter.trim().toLowerCase();
@@ -291,13 +293,24 @@ export default function SplitTunnel() {
         <label className="st-switch">
           <input
             type="checkbox"
-            checked={cfg.enabled}
-            disabled={saving}
+            checked={cfg.enabled && !proxyModeActive}
+            disabled={saving || proxyModeActive}
             onChange={e => void persistConfig({ ...cfg, enabled: e.target.checked })}
           />
-          <span>{cfg.enabled ? 'Включено' : 'Выключено'}</span>
+          <span>{proxyModeActive ? 'Пауза (mihomo)' : cfg.enabled ? 'Включено' : 'Выключено'}</span>
         </label>
       </div>
+
+      {proxyModeActive && (
+        <div className="st-banner st-banner--warn">
+          <IconAlertTriangle size={17} style={{ flexShrink: 0, marginTop: 1 }} />
+          <div>
+            Активен режим <strong>Прокси для mihomo (SOCKS5)</strong> — Split Tunneling и WFP Kill Switch
+            временно приостановлены, чтобы не конфликтовать с mihomo. Прежние настройки восстановятся
+            автоматически после выключения прокси в Настройках.
+          </div>
+        </div>
+      )}
 
       {competingVPNs.length > 0 && (
         <div className="st-banner st-banner--warn">

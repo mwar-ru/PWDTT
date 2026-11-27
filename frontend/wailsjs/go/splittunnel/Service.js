@@ -54,6 +54,10 @@ export function SetConfigPath(arg1, arg2) {
   return window['go']['splittunnel']['Service']['SetConfigPath'](arg1, arg2);
 }
 
+export function SetProxySuspended(arg1) {
+  return window['go']['splittunnel']['Service']['SetProxySuspended'](arg1);
+}
+
 export function Shutdown(arg1) {
   return window['go']['splittunnel']['Service']['Shutdown'](arg1);
 }

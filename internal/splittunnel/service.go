@@ -39,9 +39,11 @@ type Service struct {
 	router      router.TrafficRouter
 	unsubscribe func()
 
-	supported bool
-	started   bool
-	lastWarn  string
+	supported      bool
+	started        bool
+	proxySuspended bool
+	lastCfg        settings.Config
+	lastWarn       string
 }
 
 // NewService creates the platform-appropriate SplitTunnelService.
@@ -325,11 +327,31 @@ func (s *Service) onTunnelEvent(ev vpn.TunnelEvent) {
 	}
 }
 
+// SetProxySuspended pauses or resumes the split-tunneling router while an external
+// SOCKS5 proxy mode (e.g. mihomo) is active so WinDivert/WFP rules cannot conflict.
+func (s *Service) SetProxySuspended(suspended bool) error {
+	s.mu.Lock()
+	s.proxySuspended = suspended
+	cfg := s.lastCfg
+	if s.store != nil {
+		cfg = s.store.GetConfig()
+	}
+	s.reconcileRouterLocked(cfg)
+	shouldResetWfp := suspended && s.supported && s.ctx != nil
+	s.mu.Unlock()
+
+	if shouldResetWfp {
+		return s.ResetWfpRules()
+	}
+	return nil
+}
+
 func (s *Service) reconcileRouterLocked(cfg settings.Config) {
+	s.lastCfg = cfg
 	if !s.supported || s.router == nil {
 		return
 	}
-	shouldRun := cfg.Enabled && cfg.Mode != "global"
+	shouldRun := !s.proxySuspended && cfg.Enabled && cfg.Mode != "global"
 
 	if shouldRun && !s.started {
 		baseCtx := s.ctx
