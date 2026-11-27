@@ -36,6 +36,8 @@ export const serverStore = {
   },
 };
 
+const settingsListeners = new Set<(s: AppSettings) => void>();
+
 export const settingsStore = {
   get: (): AppSettings => {
     const saved = parse<Partial<AppSettings>>(SETTINGS_KEY, {});
@@ -43,5 +45,15 @@ export const settingsStore = {
     if (!merged.obfsAccepted) merged.obfsMode = 'audio';
     return merged;
   },
-  save: (settings: AppSettings) => localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)),
+  save: (settings: AppSettings) => {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+    const fresh = settingsStore.get();
+    settingsListeners.forEach(fn => fn(fresh));
+  },
+  subscribe: (fn: (s: AppSettings) => void): (() => void) => {
+    settingsListeners.add(fn);
+    return () => {
+      settingsListeners.delete(fn);
+    };
+  },
 };

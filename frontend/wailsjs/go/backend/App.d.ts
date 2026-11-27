@@ -42,3 +42,5 @@ export function SetObfsMode(arg1:string):Promise<void>;
 export function Shutdown(arg1:context.Context):Promise<void>;
 
 export function Startup(arg1:context.Context):Promise<void>;
+
+export function SyncProxyStandby(arg1:boolean,arg2:number):Promise<void>;

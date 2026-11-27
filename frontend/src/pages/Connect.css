@@ -32,3 +32,163 @@
 .icon-picker-btn:hover { background: var(--bg-3); border-color: var(--border); }
 .icon-picker-btn--active { background: var(--bg-3); border-color: var(--accent); }
 .icon-picker-backdrop { position: fixed; inset: 0; z-index: 199; background: none; border: none; padding: 0; margin: 0; cursor: default; }
+
+.main--proxy {
+  background: radial-gradient(circle at 50% 48%, rgba(139, 92, 246, 0.10), transparent 58%), var(--surface);
+}
+.orb--proxy {
+  filter: drop-shadow(0 0 12px rgba(139, 92, 246, 0.38)) hue-rotate(42deg);
+  transition: filter 0.3s ease;
+}
+.orb--proxy-active {
+  filter: drop-shadow(0 0 24px rgba(139, 92, 246, 0.78)) hue-rotate(42deg) saturate(1.25);
+  transition: filter 0.3s ease;
+}
+.orb--split-active {
+  filter: drop-shadow(0 0 20px rgba(16, 185, 129, 0.62));
+  transition: filter 0.3s ease;
+}
+.quick-modes {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  right: 54px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  z-index: 5;
+}
+.mode-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.18s, background 0.18s, color 0.18s, opacity 0.18s;
+}
+.mode-check:hover {
+  border-color: var(--text-3);
+  color: var(--text);
+}
+.mode-check input[type="checkbox"] {
+  margin: 0;
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.mode-check--proxy {
+  border-color: rgba(139, 92, 246, 0.65);
+  background: rgba(139, 92, 246, 0.14);
+  color: #a78bfa;
+}
+.mode-check--proxy input[type="checkbox"] {
+  accent-color: #8b5cf6;
+}
+.mode-check-port {
+  font-family: monospace;
+  font-size: 11px;
+  opacity: 0.85;
+}
+.mode-check--split {
+  border-color: rgba(16, 185, 129, 0.55);
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+.mode-check--split input[type="checkbox"] {
+  accent-color: #10b981;
+}
+.mode-check--paused {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.mode-check--paused input[type="checkbox"] {
+  cursor: not-allowed;
+}
+.tunnel-status-wrap {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, calc(-50% + 88px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.tunnel-label-text {
+  font-size: 13px;
+  color: var(--text-3);
+  transition: color 0.2s ease;
+}
+.tunnel-label-text--proxy {
+  color: #a78bfa;
+  font-weight: 600;
+}
+.tunnel-label-text--split {
+  color: #10b981;
+  font-weight: 600;
+}
+.mode-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border: 1px solid transparent;
+  transition: all 0.25s ease;
+}
+.mode-indicator--proxy {
+  color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.10);
+  border-color: rgba(139, 92, 246, 0.32);
+}
+.mode-indicator--proxy.mode-indicator--live {
+  color: #c4b5fd;
+  background: rgba(139, 92, 246, 0.22);
+  border-color: rgba(139, 92, 246, 0.72);
+  box-shadow: 0 0 14px rgba(139, 92, 246, 0.35);
+}
+.mode-indicator--split {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.10);
+  border-color: rgba(16, 185, 129, 0.32);
+}
+.mode-indicator--split.mode-indicator--live {
+  background: rgba(16, 185, 129, 0.20);
+  border-color: rgba(16, 185, 129, 0.65);
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.28);
+}
+.mode-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
+}
+.mode-indicator--live .mode-dot {
+  opacity: 1;
+  box-shadow: 0 0 6px currentColor;
+}
+[data-theme="light"] .mode-check--proxy {
+  color: #6d28d9;
+  background: rgba(139, 92, 246, 0.10);
+}
+[data-theme="light"] .tunnel-label-text--proxy {
+  color: #6d28d9;
+}
+[data-theme="light"] .mode-indicator--proxy.mode-indicator--live {
+  color: #5b21b6;
+  background: rgba(139, 92, 246, 0.16);
+}

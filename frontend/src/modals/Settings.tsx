@@ -8,7 +8,8 @@ import { logStore } from '../lib/stores/logStore';
 import { toastStore } from '../lib/stores/toastStore';
 import { getUpdatePauseState, setPauseNextUpdate } from '../lib/utils/updateSkip';
 import { splitTunnelApi } from '../lib/splitTunnelApi';
-import { enterProxyMode, leaveProxyMode } from '../lib/utils/proxyModeGuard';
+import { enterProxyMode, leaveProxyMode, requestProxyReconnect, syncProxyStandbyBackend } from '../lib/utils/proxyModeGuard';
+import { tunnelStore } from '../lib/stores/tunnelStore';
 import './Settings.css';
 
 interface Props {
@@ -174,23 +175,39 @@ export default function Settings({ onClose }: Props) {
                 const next = !proxyEnabled;
                 update('proxyMode', next);
                 if (next && !settings.proxyPort) update('proxyPort', 10808);
+                const wasActive = tunnelStore.get() === 'connected' || tunnelStore.get() === 'connecting';
                 if (next) {
-                  void enterProxyMode(splitTunnelApi).then(guarded => {
-                    toastStore.show(
-                      guarded
-                        ? `Режим SOCKS5 (127.0.0.1:${proxyPort}) — Split Tunneling скрыто приостановлен`
-                        : `Режим SOCKS5 (127.0.0.1:${proxyPort}) — переподключитесь`,
-                      3500,
-                    );
+                  void enterProxyMode(splitTunnelApi, proxyPort).then(guarded => {
+                    if (wasActive) {
+                      requestProxyReconnect();
+                      toastStore.show(`Режим SOCKS5 (127.0.0.1:${proxyPort}) — переподключение...`, 3500);
+                    } else {
+                      toastStore.show(
+                        guarded
+                          ? `Режим SOCKS5 (127.0.0.1:${proxyPort}) — Split Tunneling скрыто приостановлен`
+                          : `Режим SOCKS5 (127.0.0.1:${proxyPort}) включён`,
+                        3500,
+                      );
+                    }
                   });
                 } else {
                   void leaveProxyMode(splitTunnelApi).then(restored => {
-                    toastStore.show(
-                      restored
-                        ? 'Обычный режим TUN — прежние настройки Split Tunneling восстановлены'
-                        : 'Обычный режим TUN — переподключитесь',
-                      3500,
-                    );
+                    if (wasActive) {
+                      requestProxyReconnect();
+                      toastStore.show(
+                        restored
+                          ? 'Обычный режим TUN (Split Tunneling восстановлен) — переподключение...'
+                          : 'Обычный режим TUN — переподключение...',
+                        3500,
+                      );
+                    } else {
+                      toastStore.show(
+                        restored
+                          ? 'Обычный режим TUN — прежние настройки Split Tunneling восстановлены'
+                          : 'Обычный режим TUN',
+                        3500,
+                      );
+                    }
                   });
                 }
               }}
@@ -210,6 +227,9 @@ export default function Settings({ onClose }: Props) {
                   const v = parseInt(e.target.value, 10);
                   if (!Number.isNaN(v) && v >= 1 && v <= 65535) {
                     update('proxyPort', v);
+                    if (proxyEnabled && v >= 1024) {
+                      void syncProxyStandbyBackend(true, v);
+                    }
                   }
                 }}
               />

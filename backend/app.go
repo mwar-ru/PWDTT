@@ -6,7 +6,7 @@ import (
 	wails "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const Version = "1.6.0-st.7"
+const Version = "1.6.0-st.8"
 
 // App — главный объект приложения.
 // Wails привязывает его методы к frontend через Bind().
@@ -49,6 +49,7 @@ func (a *App) Shutdown(ctx context.Context) {
 	if a.bridge != nil {
 		a.bridge.Disconnect()
 	}
+	wg.StopProxyServer()
 }
 
 // ═══════════════════════════════════════════════════
@@ -57,6 +58,10 @@ func (a *App) Shutdown(ctx context.Context) {
 
 func (a *App) Connect(params ConnectParams) error {
 	return a.bridge.Connect(params)
+}
+
+func (a *App) SyncProxyStandby(enabled bool, port int) error {
+	return wg.SyncProxyStandby(enabled, port)
 }
 
 func (a *App) Disconnect() {

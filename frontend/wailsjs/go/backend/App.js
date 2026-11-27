@@ -81,3 +81,7 @@ export function Shutdown(arg1) {
 export function Startup(arg1) {
   return window['go']['backend']['App']['Startup'](arg1);
 }
+
+export function SyncProxyStandby(arg1, arg2) {
+  return window['go']['backend']['App']['SyncProxyStandby'](arg1, arg2);
+}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type React from 'react';
 import {
   IconCloverFilled, IconPlus, IconChevronUp, IconPencil,
@@ -21,6 +21,8 @@ import { Connect as WailsConnect, Disconnect as WailsDisconnect, ListProfiles } 
 import shapeLight from '../assets/shape-light.png';
 import shapeDark from '../assets/shape-dark.png';
 import powerIcon from '../assets/power-icon.png';
+import { splitTunnelApi } from '../lib/splitTunnelApi';
+import { enterProxyMode, leaveProxyMode, onProxyReconnect } from '../lib/utils/proxyModeGuard';
 import './Connect.css';
 
 const SERVER_ICONS: { key: string; render: (size: number) => React.ReactNode }[] = [
@@ -92,20 +94,23 @@ const TUNNEL_LABEL: Record<TunnelState, string> = {
   disconnecting: 'Отключение...',
 };
 
-function PowerButton({ theme, tunnelState, isActive, isSpinning, linkFlash, selected, onTunnel }: {
+function PowerButton({ theme, tunnelState, isActive, isSpinning, linkFlash, selected, proxyMode, splitActive, onTunnel }: {
   theme: string; tunnelState: TunnelState; isActive: boolean; isSpinning: boolean;
-  linkFlash: boolean; selected: Server | null; onTunnel: () => void;
+  linkFlash: boolean; selected: Server | null; proxyMode: boolean; splitActive: boolean; onTunnel: () => void;
 }) {
+  const modeClass = proxyMode
+    ? (isActive ? ' orb--proxy-active' : ' orb--proxy')
+    : (splitActive && isActive ? ' orb--split-active' : '');
   return (
     <button
       type="button"
-      className="power-btn"
+      className={`power-btn${proxyMode ? ' power-btn--proxy' : ''}`}
       onClick={onTunnel}
       disabled={!selected}
       title={selected ? TUNNEL_LABEL[tunnelState] : 'Добавьте сервер'}
       aria-label={selected ? TUNNEL_LABEL[tunnelState] : 'Добавьте сервер'}
     >
-      <div className={`orb${isSpinning ? ' orb--spinning' : isActive ? ' orb--active' : ''}${linkFlash ? ' orb--flash' : ''}`}>
+      <div className={`orb${isSpinning ? ' orb--spinning' : isActive ? ' orb--active' : ''}${linkFlash ? ' orb--flash' : ''}${modeClass}`}>
         <img src={theme === 'dark' ? shapeLight : shapeDark} alt="" draggable={false} />
       </div>
       <div className="power-icon">
@@ -418,12 +423,169 @@ export default function Connect() {
     setIconMenu(null);
   };
 
+  const [proxyMode, setProxyMode] = useState<boolean>(() => !!settingsStore.get().proxyMode);
+  const [proxyPort, setProxyPort] = useState<number>(() => settingsStore.get().proxyPort || 10808);
+  const [splitSupported, setSplitSupported] = useState<boolean>(false);
+  const [splitEnabled, setSplitEnabled] = useState<boolean>(false);
+  const [modeBusy, setModeBusy] = useState<boolean>(false);
+  const pendingReconnectRef = useRef<boolean>(false);
+  const doConnectRef = useRef<() => Promise<void>>(doConnect);
+  doConnectRef.current = doConnect;
+
+  const refreshSplitState = useCallback(async () => {
+    try {
+      const supported = await splitTunnelApi.isSupported();
+      setSplitSupported(supported);
+      if (supported) {
+        const cfg = await splitTunnelApi.getConfig();
+        setSplitEnabled(!!cfg.enabled && cfg.mode !== 'global');
+      }
+    } catch {
+      setSplitSupported(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshSplitState();
+    const unsubSettings = settingsStore.subscribe(s => {
+      setProxyMode(!!s.proxyMode);
+      setProxyPort(s.proxyPort || 10808);
+      void refreshSplitState();
+    });
+    const unsubReconnect = onProxyReconnect(() => {
+      const curState = tunnelStore.get();
+      if (curState === 'connected' || curState === 'connecting') {
+        pendingReconnectRef.current = true;
+        tunnelStore.set('disconnecting');
+        void WailsDisconnect();
+      }
+    });
+    return () => {
+      unsubSettings();
+      unsubReconnect();
+    };
+  }, [refreshSplitState]);
+
+  useEffect(() => {
+    if (tunnelState !== 'idle' || !pendingReconnectRef.current) return;
+    pendingReconnectRef.current = false;
+    const timer = setTimeout(() => {
+      if (tunnelStore.get() === 'idle' && selectedRef.current) {
+        void doConnectRef.current();
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [tunnelState]);
+
+  const handleToggleProxyMode = async (next: boolean) => {
+    if (modeBusy) return;
+    setModeBusy(true);
+    try {
+      const curSettings = settingsStore.get();
+      const port = curSettings.proxyPort || 10808;
+      settingsStore.save({ ...curSettings, proxyMode: next, proxyPort: port });
+      setProxyMode(next);
+      setProxyPort(port);
+
+      const wasActive = tunnelStore.get() === 'connected' || tunnelStore.get() === 'connecting';
+
+      if (next) {
+        const guarded = await enterProxyMode(splitTunnelApi, port);
+        await refreshSplitState();
+        if (wasActive) {
+          pendingReconnectRef.current = true;
+          tunnelStore.set('disconnecting');
+          await WailsDisconnect();
+          toastStore.show(`Режим SOCKS5 (127.0.0.1:${port}) — переподключение...`, 3500);
+        } else {
+          toastStore.show(
+            guarded
+              ? `Режим SOCKS5 (127.0.0.1:${port}) — Split Tunneling скрыто приостановлен`
+              : `Режим SOCKS5 (127.0.0.1:${port}) включён`,
+            3000,
+          );
+        }
+      } else {
+        const restored = await leaveProxyMode(splitTunnelApi);
+        await refreshSplitState();
+        if (wasActive) {
+          pendingReconnectRef.current = true;
+          tunnelStore.set('disconnecting');
+          await WailsDisconnect();
+          toastStore.show(
+            restored
+              ? 'Обычный режим TUN (Split Tunneling восстановлен) — переподключение...'
+              : 'Обычный режим TUN — переподключение...',
+            3500,
+          );
+        } else {
+          toastStore.show(
+            restored
+              ? 'Обычный режим TUN — прежние настройки Split Tunneling восстановлены'
+              : 'Обычный режим TUN',
+            3000,
+          );
+        }
+      }
+    } finally {
+      setModeBusy(false);
+    }
+  };
+
+  const handleToggleSplitTunnel = async (next: boolean) => {
+    if (modeBusy || proxyMode || !splitSupported) return;
+    setModeBusy(true);
+    try {
+      const cfg = await splitTunnelApi.getConfig();
+      const nextMode = next && cfg.mode === 'global' ? 'include' : cfg.mode;
+      const saved = await splitTunnelApi.saveConfig({ ...cfg, enabled: next, mode: nextMode });
+      setSplitEnabled(!!saved.enabled && saved.mode !== 'global');
+      toastStore.show(
+        next ? 'Split Tunneling включён' : 'Split Tunneling выключен',
+        2500,
+      );
+    } catch (e) {
+      toastStore.show(`Ошибка Split Tunneling: ${String(e)}`, 4000);
+    } finally {
+      setModeBusy(false);
+    }
+  };
+
   const isActive = tunnelState === 'connected';
   const isSpinning = tunnelState === 'connecting';
+  const splitActive = splitSupported && splitEnabled && !proxyMode;
 
   return (
     <>
-      <main className="main">
+      <main className={`main${proxyMode ? ' main--proxy' : ''}`}>
+        <div className="quick-modes">
+          <label className={`mode-check${proxyMode ? ' mode-check--proxy' : ''}`}>
+            <input
+              type="checkbox"
+              checked={proxyMode}
+              disabled={modeBusy}
+              onChange={e => void handleToggleProxyMode(e.target.checked)}
+            />
+            <span>Прокси mihomo</span>
+            {proxyMode && <span className="mode-check-port">:{proxyPort}</span>}
+          </label>
+
+          {splitSupported && (
+            <label
+              className={`mode-check${splitActive ? ' mode-check--split' : ''}${proxyMode ? ' mode-check--paused' : ''}`}
+              title={proxyMode ? 'Приостановлено на время работы режима прокси для mihomo' : 'Маршрутизация отдельных приложений (Split Tunneling)'}
+            >
+              <input
+                type="checkbox"
+                checked={splitActive}
+                disabled={modeBusy || proxyMode}
+                onChange={e => void handleToggleSplitTunnel(e.target.checked)}
+              />
+              <span>{proxyMode ? 'Split Tunnel (пауза)' : 'Split Tunnel'}</span>
+            </label>
+          )}
+        </div>
+
         <button type="button" className="btn-add" onClick={() => setAddServerOpen(true)} aria-label="Добавить сервер">
           <IconPlus stroke={2} size={22} />
         </button>
@@ -435,10 +597,28 @@ export default function Connect() {
           isSpinning={isSpinning}
           linkFlash={linkFlash}
           selected={selected}
+          proxyMode={proxyMode}
+          splitActive={splitActive}
           onTunnel={handleTunnel}
         />
 
-        <span className="tunnel-label">{selected ? TUNNEL_LABEL[tunnelState] : 'Нет серверов'}</span>
+        <div className="tunnel-status-wrap">
+          <span className={`tunnel-label-text${proxyMode && isActive ? ' tunnel-label-text--proxy' : splitActive && isActive ? ' tunnel-label-text--split' : ''}`}>
+            {selected ? TUNNEL_LABEL[tunnelState] : 'Нет серверов'}
+          </span>
+          {proxyMode && (
+            <span className={`mode-indicator mode-indicator--proxy${isActive ? ' mode-indicator--live' : ''}`}>
+              <span className="mode-dot" />
+              SOCKS5 · 127.0.0.1:{proxyPort} · {isActive ? 'VPN' : 'DIRECT'}
+            </span>
+          )}
+          {!proxyMode && splitActive && (
+            <span className={`mode-indicator mode-indicator--split${isActive ? ' mode-indicator--live' : ''}`}>
+              <span className="mode-dot" />
+              Split Tunneling
+            </span>
+          )}
+        </div>
 
         <ServerSelector
           servers={servers}

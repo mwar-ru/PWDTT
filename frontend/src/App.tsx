@@ -89,7 +89,7 @@ function useUpdateChecker() {
 export default function App() {
   useWailsEvents();
   useEffect(() => {
-    void syncProxyModeOnStartup(!!settingsStore.get().proxyMode, splitTunnelApi);
+    void syncProxyModeOnStartup(!!settingsStore.get().proxyMode, splitTunnelApi, settingsStore.get().proxyPort || 10808);
   }, []);
   useWdttPaste();
   const { updateInfo, closeUpdate } = useUpdateChecker();

@@ -55,7 +55,21 @@ function clearSplitBackup(): void {
   }
 }
 
-export async function enterProxyMode(api: ProxyGuardApi): Promise<boolean> {
+export async function syncProxyStandbyBackend(enabled: boolean, port = 10808): Promise<void> {
+  try {
+    const fn = (window as unknown as {
+      go?: { backend?: { App?: { SyncProxyStandby?: (e: boolean, p: number) => Promise<void> } } };
+    })?.go?.backend?.App?.SyncProxyStandby;
+    if (fn) {
+      await fn(enabled, port || 10808);
+    }
+  } catch {
+    // ignore if port busy or running outside Wails
+  }
+}
+
+export async function enterProxyMode(api: ProxyGuardApi, port = 10808): Promise<boolean> {
+  await syncProxyStandbyBackend(true, port);
   try {
     const supported = await api.isSupported();
     if (!supported) return false;
@@ -88,6 +102,7 @@ export async function enterProxyMode(api: ProxyGuardApi): Promise<boolean> {
 }
 
 export async function leaveProxyMode(api: ProxyGuardApi): Promise<boolean> {
+  await syncProxyStandbyBackend(false, 0);
   try {
     await api.setProxySuspended(false).catch(() => {});
     const backup = getSavedSplitBackup();
@@ -117,7 +132,23 @@ export async function leaveProxyMode(api: ProxyGuardApi): Promise<boolean> {
 export async function syncProxyModeOnStartup(
   proxyEnabled: boolean,
   api: ProxyGuardApi,
+  port = 10808,
 ): Promise<void> {
-  if (!proxyEnabled) return;
-  await enterProxyMode(api);
+  if (!proxyEnabled) {
+    await syncProxyStandbyBackend(false, 0);
+    return;
+  }
+  await enterProxyMode(api, port);
+}
+const reconnectListeners = new Set<() => void>();
+
+export function onProxyReconnect(fn: () => void): () => void {
+  reconnectListeners.add(fn);
+  return () => {
+    reconnectListeners.delete(fn);
+  };
+}
+
+export function requestProxyReconnect(): void {
+  reconnectListeners.forEach(fn => fn());
 }
