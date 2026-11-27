@@ -28,8 +28,12 @@ jobs:
         run: |
           npm ci
           npm run test
+          npm run build
       - name: Build mwPWDTT_windows.exe
-        run: wails build -platform windows/amd64 -s
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "frontend/dist/index.html")) { throw "frontend/dist/index.html missing before wails build!" }
+          wails build -platform windows/amd64 -s
       - name: Upload Windows artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v6

@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { IconSettings2, IconX, IconHeartFilled, IconBug, IconAlertTriangle, IconFileText } from '@tabler/icons-react';
+import { IconSettings2, IconX, IconHeartFilled, IconBug, IconAlertTriangle, IconFileText, IconCopy, IconCheck } from '@tabler/icons-react';
 import { settingsStore } from '../lib/store';
 import type { AppSettings } from '../lib/types';
 import { SetAutoStart, GetAutoStart, GetVersion, GenerateReport, GetObfsAccepted, SetObfsAccepted, SetObfsMode } from '../../wailsjs/go/backend/App';
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime';
 import { logStore } from '../lib/stores/logStore';
 import { toastStore } from '../lib/stores/toastStore';
+import { getUpdatePauseState, setPauseNextUpdate } from '../lib/utils/updateSkip';
 import './Settings.css';
 
 interface Props {
@@ -18,6 +19,34 @@ export default function Settings({ onClose }: Props) {
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showObfsModal, setShowObfsModal] = useState(false);
   const [pendingObfsMode, setPendingObfsMode] = useState<'audio' | 'video'>('audio');
+  const [updatePause, setUpdatePause] = useState(() => getUpdatePauseState());
+  const [copiedMihomo, setCopiedMihomo] = useState(false);
+
+  const proxyEnabled = !!settings.proxyMode;
+  const proxyPort = settings.proxyPort || 10808;
+  const isUpdatePaused = updatePause.pausedNext || Boolean(updatePause.skippedVersion);
+
+  const handleCopyMihomo = async () => {
+    const yaml = [
+      'proxies:',
+      '  - name: "PWDTT"',
+      '    type: socks5',
+      '    server: 127.0.0.1',
+      `    port: ${proxyPort}`,
+      '    udp: true',
+      '',
+      'rules:',
+      '  - PROCESS-NAME,mwPWDTT_windows.exe,DIRECT',
+    ].join('\n');
+    try {
+      await navigator.clipboard.writeText(yaml);
+      setCopiedMihomo(true);
+      toastStore.show(`Конфиг mihomo (127.0.0.1:${proxyPort}) скопирован`, 3000);
+      setTimeout(() => setCopiedMihomo(false), 2000);
+    } catch {
+      toastStore.show('Не удалось скопировать в буфер', 3000);
+    }
+  };
 
   const update = useCallback(<K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     setSettings(s => {
@@ -131,6 +160,76 @@ export default function Settings({ onClose }: Props) {
               <button type="button" className={`st-seg-btn${!settings.turnTcp ? ' st-seg-btn--active' : ''}`} onClick={() => update('turnTcp', false)}>UDP</button>
               <button type="button" className={`st-seg-btn${settings.turnTcp ? ' st-seg-btn--active' : ''}`} onClick={() => update('turnTcp', true)}>TCP</button>
             </div>
+          </div>
+
+          <div className="st-row">
+            <span>Прокси для mihomo <span className="st-badge">SOCKS5</span></span>
+            <button
+              type="button"
+              className={`st-toggle st-toggle--${proxyEnabled ? 'on' : 'off'}`}
+              aria-label={proxyEnabled ? 'Отключить режим SOCKS5-прокси' : 'Включить режим SOCKS5-прокси'}
+              onClick={() => {
+                const next = !proxyEnabled;
+                update('proxyMode', next);
+                if (next && !settings.proxyPort) update('proxyPort', 10808);
+                toastStore.show(
+                  next
+                    ? `Режим SOCKS5 (127.0.0.1:${proxyPort}) — переподключитесь`
+                    : 'Обычный режим TUN — переподключитесь',
+                  3000,
+                );
+              }}
+            />
+          </div>
+
+          {proxyEnabled && (
+            <div className="st-subrow">
+              <span className="st-subrow-label">127.0.0.1 :</span>
+              <input
+                type="number"
+                className="st-port-input"
+                min={1024}
+                max={65535}
+                value={proxyPort}
+                onChange={e => {
+                  const v = parseInt(e.target.value, 10);
+                  if (!Number.isNaN(v) && v >= 1 && v <= 65535) {
+                    update('proxyPort', v);
+                  }
+                }}
+              />
+              <button type="button" className="st-mini-btn" onClick={() => void handleCopyMihomo()}>
+                {copiedMihomo ? <IconCheck size={13} /> : <IconCopy size={13} />}
+                {copiedMihomo ? 'Скопировано' : 'YAML'}
+              </button>
+            </div>
+          )}
+
+          <div className="st-row">
+            <span>
+              Приостановить обновления
+              {isUpdatePaused && (
+                <span className="st-badge">
+                  {updatePause.skippedVersion ? `пропуск v${updatePause.skippedVersion}` : 'след. версия'}
+                </span>
+              )}
+            </span>
+            <button
+              type="button"
+              className={`st-toggle st-toggle--${isUpdatePaused ? 'on' : 'off'}`}
+              aria-label={isUpdatePaused ? 'Возобновить уведомления об обновлениях' : 'Приостановить обновления до следующей версии'}
+              onClick={() => {
+                const next = !isUpdatePaused;
+                setPauseNextUpdate(next);
+                setUpdatePause(getUpdatePauseState());
+                toastStore.show(
+                  next
+                    ? 'Следующее обновление будет пропущено (напомним через одно)'
+                    : 'Уведомления об обновлениях включены',
+                  3500,
+                );
+              }}
+            />
           </div>
 
           <div className="st-info">

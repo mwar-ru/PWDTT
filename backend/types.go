@@ -11,6 +11,8 @@ type ConnectParams struct {
 	ObfsMode    string   `json:"obfsMode,omitempty"`    // audio/video
 	Fingerprint string   `json:"fingerprint,omitempty"` // chrome/android/ios/safari/firefox
 	TurnTCP     bool     `json:"turnTcp,omitempty"`     // использовать TCP транспорт
+	ProxyMode   bool     `json:"proxyMode,omitempty"`   // локальный SOCKS5-прокси (для mihomo)
+	ProxyPort   int      `json:"proxyPort,omitempty"`   // порт SOCKS5 (по умолчанию 10808)
 }
 
 // ProfileData — данные сервера, хранятся в ~/.config/pwdtt/servers/<name>.json.
@@ -32,4 +34,6 @@ type AppSettings struct {
 	ObfsMode     string `json:"obfsMode"`     // audio/video
 	ObfsAccepted bool   `json:"obfsAccepted"` // пользователь принял предупреждение об обфускации
 	TurnTCP      bool   `json:"turnTcp"`      // использовать TCP транспорт
+	ProxyMode    bool   `json:"proxyMode,omitempty"` // локальный SOCKS5-прокси (для mihomo)
+	ProxyPort    int    `json:"proxyPort,omitempty"` // порт SOCKS5
 }

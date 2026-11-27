@@ -35,6 +35,8 @@ export namespace backend {
 	    obfsMode?: string;
 	    fingerprint?: string;
 	    turnTcp?: boolean;
+	    proxyMode?: boolean;
+	    proxyPort?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new ConnectParams(source);
@@ -51,6 +53,8 @@ export namespace backend {
 	        this.obfsMode = source["obfsMode"];
 	        this.fingerprint = source["fingerprint"];
 	        this.turnTcp = source["turnTcp"];
+	        this.proxyMode = source["proxyMode"];
+	        this.proxyPort = source["proxyPort"];
 	    }
 	}
 	export class LogEntry {

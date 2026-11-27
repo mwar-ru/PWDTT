@@ -74,6 +74,8 @@ func (b *Bridge) Connect(params ConnectParams) error {
 		TurnTCP:     params.TurnTCP,
 	}
 
+	wg.SetProxyMode(params.ProxyMode, params.ProxyPort)
+
 	c := core.New(cfg)
 	
 	b.mu.Lock()

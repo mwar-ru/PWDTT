@@ -342,7 +342,9 @@ export default function Connect() {
         captchaMode: 'auto',
         obfsMode: settingsStore.get().obfsMode || 'audio',
         turnTcp: settingsStore.get().turnTcp || false,
-      });
+        proxyMode: !!settingsStore.get().proxyMode,
+        proxyPort: settingsStore.get().proxyPort || 10808,
+      } as never);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       logStore.push('ERROR', msg);

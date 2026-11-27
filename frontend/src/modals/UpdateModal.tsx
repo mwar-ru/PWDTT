@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { IconX, IconDownload, IconRocket } from '@tabler/icons-react';
 import { BrowserOpenURL } from '../../wailsjs/runtime/runtime';
 import { renderMarkdown } from '../lib/utils/markdown';
+import { skipUpdateVersion } from '../lib/utils/updateSkip';
+import { toastStore } from '../lib/stores/toastStore';
 
 interface Props {
   version: string;
@@ -64,6 +66,9 @@ export default function UpdateModal({ version, body, url, onClose }: Props) {
         .upd-btn--primary:hover:not(:disabled) { opacity: 0.9; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
         .upd-btn--secondary { background: transparent; color: var(--text-3); border: 1px solid var(--border); }
         .upd-btn--secondary:hover:not(:disabled) { border-color: var(--text-3); color: var(--text); }
+        .upd-skip { width: 100%; margin-top: 10px; padding: 6px; background: none; border: none; color: var(--text-3); font-size: 12px; cursor: pointer; text-align: center; transition: color 0.15s; font-family: 'Geist', sans-serif; }
+        .upd-skip:hover:not(:disabled) { color: var(--text); text-decoration: underline; }
+        .upd-skip:disabled { opacity: 0.5; cursor: wait; }
       `}</style>
       <div className="upd-overlay" onClick={updating ? undefined : onClose}>
         <div className="upd-modal" onClick={e => e.stopPropagation()}>
@@ -95,6 +100,21 @@ export default function UpdateModal({ version, body, url, onClose }: Props) {
               {updating ? 'Обновление...' : 'Обновить'}
             </button>
           </div>
+
+          {!error && (
+            <button
+              type="button"
+              className="upd-skip"
+              disabled={updating}
+              onClick={() => {
+                skipUpdateVersion(version);
+                toastStore.show(`v${version} пропущена — уведомим о следующей версии`, 4000);
+                onClose();
+              }}
+            >
+              Пропустить эту версию (не напоминать до следующей)
+            </button>
+          )}
         </div>
       </div>
     </>

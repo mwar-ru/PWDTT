@@ -28,10 +28,14 @@ jobs:
         run: |
           npm ci
           npm run test
+          npm run build
       - name: Run Go tests
         run: go test ./backend/... ./internal/splittunnel/...
       - name: Build mwPWDTT_windows.exe
-        run: wails build -platform windows/amd64 -s
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "frontend/dist/index.html")) { throw "frontend/dist/index.html missing before wails build!" }
+          wails build -platform windows/amd64 -s
       - name: Download & verify WinDivert 2.2.2-A
         shell: pwsh
         run: |

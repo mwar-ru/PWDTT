@@ -15,6 +15,8 @@ export interface AppSettings {
   obfsMode: 'audio' | 'video';
   obfsAccepted: boolean;
   turnTcp: boolean;
+  proxyMode?: boolean;
+  proxyPort?: number;
 }
 
 export type TunnelState = 'idle' | 'connecting' | 'connected' | 'disconnecting';

@@ -13,6 +13,7 @@ import { tunnelStore } from './lib/stores/tunnelStore';
 import type { LogLevel } from './lib/stores/logStore';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import { CheckUpdate } from '../wailsjs/go/backend/App';
+import { shouldNotifyUpdate } from './lib/utils/updateSkip';
 
 function useWdttPaste() {
   useEffect(() => {
@@ -68,7 +69,7 @@ function useUpdateChecker() {
   useEffect(() => {
     const check = () => {
       CheckUpdate().then(info => {
-        if (info.available) {
+        if (info.available && shouldNotifyUpdate(info.version)) {
           setUpdateInfo({ version: info.version, body: info.body, url: info.url });
         }
       }).catch(() => {

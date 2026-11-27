@@ -50,6 +50,12 @@ type WG struct {
 
 	// macOS-specific: соединение с привилегированным helper-процессом
 	helperConn *net.UnixConn
+
+	// Userspace SOCKS5 proxy mode (netstack, for mihomo)
+	proxyMode   bool
+	proxyPort   int
+	proxyActive bool
+	activeSocks *socks5Server
 }
 
 type wgLogFunc func(msg string)
@@ -57,6 +63,9 @@ type wgLogFunc func(msg string)
 func (w *WG) Apply(conf string, turnIPs []string, logf wgLogFunc) error {
 	if logf == nil {
 		logf = func(msg string) { log.Printf("[WG] %s", msg) }
+	}
+	if w.isProxyMode() {
+		return w.applyProxy(conf, logf)
 	}
 	switch runtime.GOOS {
 	case "linux":
@@ -83,6 +92,9 @@ func CleanupStaleExcludeRoutes(logf wgLogFunc) {
 }
 
 func (w *WG) Teardown() {
+	if w.teardownProxy() {
+		return
+	}
 	switch runtime.GOOS {
 	case "linux":
 		w.teardownLinux()
