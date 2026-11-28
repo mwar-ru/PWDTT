@@ -81,10 +81,24 @@ function useUpdateChecker() {
       });
     };
     check();
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+    const onShowUpdate = (e: Event) => {
+      const detail = (e as CustomEvent<{ version: string; body: string; url: string }>).detail;
+      if (detail?.version) setUpdateInfo(detail);
+    };
+    window.addEventListener('mwpwdtt:show-update', onShowUpdate);
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      window.removeEventListener('mwpwdtt:show-update', onShowUpdate);
+    };
   }, []);
 
-  return { updateInfo, closeUpdate: () => setUpdateInfo(null) };
+  return {
+    updateInfo,
+    closeUpdate: () => {
+      setUpdateInfo(null);
+      window.dispatchEvent(new Event('mwpwdtt:update-pause-changed'));
+    },
+  };
 }
 
 let startupAutoConnectDone = false;

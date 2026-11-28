@@ -7,6 +7,7 @@ import {
   IconSettings2,
   IconSun,
   IconMoon,
+  IconDeviceDesktop,
 } from '@tabler/icons-react';
 import appIcon from '../assets/app-icon.png';
 import { themeStore } from '../lib/stores/themeStore';
@@ -45,6 +46,10 @@ export default function Sidebar({ onSettings, pathname: pathnameProp }: Props) {
   const [splitSupported, setSplitSupported] = useState(() => hasSplitTunnelBinding());
 
   useEffect(() => {
+    return themeStore.subscribe(t => setTheme(t));
+  }, []);
+
+  useEffect(() => {
     let active = true;
     splitTunnelApi.isSupported().then(ok => {
       if (active) setSplitSupported(ok);
@@ -56,10 +61,23 @@ export default function Sidebar({ onSettings, pathname: pathnameProp }: Props) {
 
   const navItems = splitSupported ? [BASE_NAV[0], SPLIT_NAV_ITEM, BASE_NAV[1]] : BASE_NAV;
 
-  const toggleTheme = () => {
-    themeStore.toggle();
-    setTheme(themeStore.get());
+  const cycleTheme = () => {
+    themeStore.cycle();
   };
+
+  const themeTitle =
+    theme === 'light'
+      ? 'Тема: Светлая (переключить на тёмную)'
+      : theme === 'dark'
+        ? 'Тема: Тёмная (переключить на Авто)'
+        : `Тема: Авто (${themeStore.getResolved() === 'dark' ? 'тёмная' : 'светлая'})`;
+
+  const themeIcon =
+    theme === 'light'
+      ? <IconSun key="light" size={17} stroke={2} />
+      : theme === 'dark'
+        ? <IconMoon key="dark" size={17} stroke={2} />
+        : <IconDeviceDesktop key="auto" size={17} stroke={2} />;
 
   return (
     <>
@@ -98,8 +116,8 @@ export default function Sidebar({ onSettings, pathname: pathnameProp }: Props) {
           ))}
         </div>
         <div className="sidebar-bottom">
-          <button type="button" className="theme-toggle" onClick={toggleTheme} title="Toggle theme" aria-label="Переключить тему">
-            {theme === 'light' ? <IconMoon size={17} stroke={2} /> : <IconSun size={17} stroke={2} />}
+          <button type="button" className="theme-toggle" onClick={cycleTheme} title={themeTitle} aria-label="Переключить тему">
+            {themeIcon}
           </button>
           <button
             type="button"

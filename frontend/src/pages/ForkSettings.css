@@ -211,7 +211,54 @@
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
 }
-.fs-btn:hover {
+.fs-btn:hover:not(:disabled) {
   border-color: var(--accent);
   background: var(--bg-3);
+}
+.fs-btn:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+.fs-theme-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.fs-theme-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.fs-theme-btn:hover {
+  color: var(--text);
+  background: var(--bg-2);
+}
+.fs-theme-btn--active {
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
+}
+.fs-theme-btn--active:hover {
+  background: var(--accent);
+  color: var(--accent-fg, #fff);
+}
+@keyframes fs-spin-anim {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.fs-spin {
+  animation: fs-spin-anim 0.9s linear infinite;
 }

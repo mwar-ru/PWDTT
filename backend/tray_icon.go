@@ -52,34 +52,34 @@ var trayVariantStyles = map[TrayIconVariant]trayBadgeStyle{
 	// Subtle dim violet ring when SOCKS5 is running in DIRECT standby mode
 	TrayIconProxyDirect: {
 		ringColor: color.NRGBA{R: 139, G: 92, B: 246, A: 185},
-		ringWidth: 0.085,
+		ringWidth: 0.065,
 		hasDot:    false,
 	},
 	// Amber ring + dot while connecting
 	TrayIconConnecting: {
 		ringColor: color.NRGBA{R: 245, G: 158, B: 11, A: 255},
-		ringWidth: 0.105,
+		ringWidth: 0.08,
 		hasDot:    true,
 		dotColor:  color.NRGBA{R: 251, G: 191, B: 36, A: 255},
 	},
 	// Vivid violet ring + glowing dot when connected in mihomo SOCKS5 VPN mode
 	TrayIconProxyVPN: {
 		ringColor: color.NRGBA{R: 139, G: 92, B: 246, A: 255},
-		ringWidth: 0.115,
+		ringWidth: 0.085,
 		hasDot:    true,
 		dotColor:  color.NRGBA{R: 167, G: 139, B: 250, A: 255},
 	},
 	// Emerald ring + dot when connected with Split Tunneling active
 	TrayIconSplitVPN: {
 		ringColor: color.NRGBA{R: 16, G: 185, B: 129, A: 255},
-		ringWidth: 0.11,
+		ringWidth: 0.08,
 		hasDot:    true,
 		dotColor:  color.NRGBA{R: 52, G: 211, B: 153, A: 255},
 	},
 	// Bright blue ring + dot when connected in standard Global TUN mode
 	TrayIconGlobalVPN: {
 		ringColor: color.NRGBA{R: 59, G: 130, B: 246, A: 255},
-		ringWidth: 0.11,
+		ringWidth: 0.08,
 		hasDot:    true,
 		dotColor:  color.NRGBA{R: 96, G: 165, B: 250, A: 255},
 	},
@@ -128,7 +128,7 @@ func renderStatusFrame(src image.Image, size int, style trayBadgeStyle) *image.N
 	dst := image.NewNRGBA(image.Rect(0, 0, size, size))
 	fSize := float64(size)
 	ringPx := math.Max(2.0, fSize*style.ringWidth)
-	inset := int(math.Round(ringPx + math.Max(1.0, fSize*0.03)))
+	inset := int(math.Round(ringPx * 0.72))
 	inner := size - inset*2
 	if inner < 8 {
 		inner = size
@@ -171,8 +171,8 @@ func renderStatusFrame(src image.Image, size int, style trayBadgeStyle) *image.N
 
 	// 3. Draw high-contrast status dot in bottom-right corner
 	if style.hasDot {
-		dotR := math.Max(4.0, fSize*0.18)
-		haloR := dotR + math.Max(1.5, fSize*0.055)
+		dotR := math.Max(2.5, fSize*0.115)
+		haloR := dotR + math.Max(1.0, fSize*0.035)
 		dotCX := fSize - haloR - 0.5
 		dotCY := fSize - haloR - 0.5
 		haloCol := color.NRGBA{R: 15, G: 23, B: 42, A: 235}

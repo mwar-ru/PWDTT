@@ -189,7 +189,7 @@ export default function SplitTunnel() {
       await refreshStatus();
       toastStore.show(
         existingOnly
-          ? 'Подключён существующий файл настроек (OneDrive/синхронизация)'
+          ? 'Подключён существующий файл настроек'
           : 'Файл настроек перенесён по новому пути'
       );
     } catch (err) {
@@ -619,12 +619,12 @@ export default function SplitTunnel() {
         </div>
       </div>
 
-      {/* OneDrive / Portable Config Path */}
+      {/* Custom / Portable Config Path */}
       <div className="st-card">
         <div className="st-card-head">
           <span className="st-card-title">
             <IconFolder size={17} />
-            Файл настроек (синхронизация OneDrive / несколько ПК)
+            Файл настроек
           </span>
           <label className="st-switch">
             <input

@@ -6,7 +6,7 @@ import (
 	wails "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
-const Version = "1.6.0-st.11"
+const Version = "1.6.0-st.12"
 
 // App — главный объект приложения.
 // Wails привязывает его методы к frontend через Bind().

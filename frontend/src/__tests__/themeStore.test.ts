@@ -13,7 +13,7 @@ describe('themeStore', () => {
     localStorage.clear();
     // themeStore инициализируется при загрузке модуля — проверяем текущее значение
     const theme = themeStore.get();
-    expect(['light', 'dark']).toContain(theme);
+    expect(['light', 'dark', 'auto']).toContain(theme);
   });
 
   it('set: сохраняет в localStorage и применяет', () => {
@@ -32,12 +32,31 @@ describe('themeStore', () => {
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
   });
 
+  it('set: auto применяет системную тему', () => {
+    themeStore.set('auto');
+
+    expect(localStorage.getItem('pwdtt_theme')).toBe('auto');
+    expect(themeStore.get()).toBe('auto');
+    expect(['light', 'dark']).toContain(themeStore.getResolved());
+    expect(document.documentElement.getAttribute('data-theme')).toBe(themeStore.getResolved());
+  });
+
   it('toggle: light → dark → light', () => {
     themeStore.set('light');
     themeStore.toggle();
     expect(themeStore.get()).toBe('dark');
 
     themeStore.toggle();
+    expect(themeStore.get()).toBe('light');
+  });
+
+  it('cycle: light → dark → auto → light', () => {
+    themeStore.set('light');
+    themeStore.cycle();
+    expect(themeStore.get()).toBe('dark');
+    themeStore.cycle();
+    expect(themeStore.get()).toBe('auto');
+    themeStore.cycle();
     expect(themeStore.get()).toBe('light');
   });
 

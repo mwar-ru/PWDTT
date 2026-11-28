@@ -7,13 +7,19 @@ import {
   IconCopy,
   IconCheck,
   IconFileText,
+  IconPalette,
+  IconSun,
+  IconMoon,
+  IconDeviceDesktop,
 } from '@tabler/icons-react';
 import appIcon from '../assets/app-icon.png';
 import { settingsStore } from '../lib/store';
 import type { AppSettings } from '../lib/types';
-import { GetVersion } from '../../wailsjs/go/backend/App';
+import { CheckUpdate, GetVersion } from '../../wailsjs/go/backend/App';
 import { toastStore } from '../lib/stores/toastStore';
 import { tunnelStore } from '../lib/stores/tunnelStore';
+import { themeStore } from '../lib/stores/themeStore';
+import type { Theme } from '../lib/stores/themeStore';
 import { splitTunnelApi } from '../lib/splitTunnelApi';
 import {
   enterProxyMode,
@@ -37,7 +43,9 @@ function getAppExt(): WailsAppExt | undefined {
 export default function ForkSettings() {
   const [settings, setSettings] = useState<AppSettings>(() => settingsStore.get());
   const [version, setVersion] = useState('...');
+  const [theme, setTheme] = useState<Theme>(() => themeStore.get());
   const [updatePause, setUpdatePause] = useState(() => getUpdatePauseState());
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [copiedMihomo, setCopiedMihomo] = useState(false);
 
   const proxyEnabled = !!settings.proxyMode;
@@ -53,7 +61,11 @@ export default function ForkSettings() {
   }, []);
 
   useEffect(() => {
-    const unsub = settingsStore.subscribe(s => setSettings(s));
+    const unsubSettings = settingsStore.subscribe(s => setSettings(s));
+    const unsubTheme = themeStore.subscribe(t => setTheme(t));
+    const onPauseChanged = () => setUpdatePause(getUpdatePauseState());
+    window.addEventListener('mwpwdtt:update-pause-changed', onPauseChanged);
+
     GetVersion().then(setVersion).catch(() => {});
     const ext = getAppExt();
     if (ext?.GetStartMinimized) {
@@ -63,7 +75,11 @@ export default function ForkSettings() {
         }
       }).catch(() => {});
     }
-    return unsub;
+    return () => {
+      unsubSettings();
+      unsubTheme();
+      window.removeEventListener('mwpwdtt:update-pause-changed', onPauseChanged);
+    };
   }, [update]);
 
   const handleToggleStartMinimized = async () => {
@@ -148,6 +164,28 @@ export default function ForkSettings() {
     }
   };
 
+  const handleCheckUpdate = async () => {
+    if (checkingUpdate) return;
+    setCheckingUpdate(true);
+    try {
+      const info = await CheckUpdate();
+      if (info.available) {
+        window.dispatchEvent(
+          new CustomEvent('mwpwdtt:show-update', {
+            detail: { version: info.version, body: info.body, url: info.url },
+          }),
+        );
+      } else {
+        toastStore.show(`Установлена актуальная версия (v${version})`, 3500);
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toastStore.show(msg ? `Не удалось проверить обновления: ${msg}` : 'Не удалось проверить обновления', 4000);
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
   const handleOpenUpdateLog = async () => {
     try {
       const fn = getAppExt()?.OpenUpdateLog;
@@ -174,10 +212,55 @@ export default function ForkSettings() {
           </div>
           <div>
             <h2 className="fs-title">Настройки mwPWDTT</h2>
-            <span className="fs-subtitle">Дополнительные функции Windows-форка: трей, автоподключение, mihomo и обновления</span>
+            <span className="fs-subtitle">Дополнительные функции Windows-форка: оформление, трей, автоподключение, mihomo и обновления</span>
           </div>
         </div>
         <span className="fs-ver-pill">v{version}</span>
+      </div>
+
+      {/* Оформление */}
+      <div className="fs-card">
+        <div className="fs-card-head">
+          <IconPalette size={16} />
+          <span>Оформление</span>
+        </div>
+
+        <div className="fs-row">
+          <div className="fs-row-text">
+            <span className="fs-row-label">Тема интерфейса</span>
+            <span className="fs-row-desc">
+              {theme === 'auto'
+                ? `Автоматически подстраивается под тему Windows (сейчас: ${themeStore.getResolved() === 'dark' ? 'тёмная' : 'светлая'}).`
+                : 'Выберите светлую, тёмную тему или режим «Авто» по настройкам системы.'}
+            </span>
+          </div>
+          <div className="fs-theme-seg" role="group" aria-label="Выбор темы интерфейса">
+            <button
+              type="button"
+              className={`fs-theme-btn${theme === 'light' ? ' fs-theme-btn--active' : ''}`}
+              onClick={() => themeStore.set('light')}
+            >
+              <IconSun size={14} />
+              Светлая
+            </button>
+            <button
+              type="button"
+              className={`fs-theme-btn${theme === 'dark' ? ' fs-theme-btn--active' : ''}`}
+              onClick={() => themeStore.set('dark')}
+            >
+              <IconMoon size={14} />
+              Тёмная
+            </button>
+            <button
+              type="button"
+              className={`fs-theme-btn${theme === 'auto' ? ' fs-theme-btn--active' : ''}`}
+              onClick={() => themeStore.set('auto')}
+            >
+              <IconDeviceDesktop size={14} />
+              Авто
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Запуск и трей */}
@@ -282,6 +365,24 @@ export default function ForkSettings() {
         <div className="fs-card-head">
           <IconRefresh size={16} />
           <span>Обновления и диагностика</span>
+        </div>
+
+        <div className="fs-row">
+          <div className="fs-row-text">
+            <span className="fs-row-label">Проверить обновления</span>
+            <span className="fs-row-desc">
+              Текущая версия: v{version}. Ручная проверка показывает доступный релиз даже при включённой паузе уведомлений.
+            </span>
+          </div>
+          <button
+            type="button"
+            className="fs-btn"
+            disabled={checkingUpdate}
+            onClick={() => void handleCheckUpdate()}
+          >
+            <IconRefresh size={14} className={checkingUpdate ? 'fs-spin' : undefined} />
+            {checkingUpdate ? 'Проверка...' : 'Проверить сейчас'}
+          </button>
         </div>
 
         <div className="fs-row">

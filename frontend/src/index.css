@@ -20,6 +20,10 @@
 }
 
 :root {
+  color-scheme: light;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: rgba(100, 116, 139, 0.35);
+  --scrollbar-thumb-hover: rgba(100, 116, 139, 0.58);
   --bg: #ffffff;
   --bg-2: #eff5ff;
   --bg-3: #dbeafe;
@@ -47,6 +51,10 @@
 
 /* ─── Dark base — Deep Navy Blue ─── */
 [data-theme="dark"] {
+  color-scheme: dark;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: rgba(125, 150, 191, 0.32);
+  --scrollbar-thumb-hover: rgba(125, 150, 191, 0.56);
   --bg: #0b1426;
   --bg-2: #12203b;
   --bg-3: #1b2f54;
@@ -106,6 +114,35 @@ body {
   transition: background 0.3s ease, color 0.3s ease;
   -webkit-user-select: none;
   user-select: none;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 @keyframes modal-in {
