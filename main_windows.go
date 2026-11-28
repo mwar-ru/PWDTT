@@ -55,7 +55,9 @@ func startTray(ctx context.Context) {
 		}
 
 		enableNativeMenuTheme()
-		systray.SetIcon(trayIcon)
+		trayIcons := backend.BuildTrayIcons(appIcon, trayIcon)
+		currentIconVariant := backend.TrayIconIdle
+		systray.SetIcon(trayIcons[currentIconVariant])
 		systray.SetTooltip("mwPWDTT_windows")
 		// Левый клик / двойной клик — просто разворачиваем окно в текущем состоянии
 		systray.SetOnClick(func(systray.IMenu) { showMainWindow(ctx) })
@@ -168,6 +170,13 @@ func startTray(ctx context.Context) {
 				tooltip = fmt.Sprintf("mwPWDTT_windows — SOCKS5 DIRECT (:%d)", port)
 			}
 			systray.SetTooltip(tooltip)
+			nextVariant := backend.SelectTrayIconVariant(st)
+			if nextVariant != currentIconVariant {
+				if icoBytes, ok := trayIcons[nextVariant]; ok && len(icoBytes) > 0 {
+					systray.SetIcon(icoBytes)
+					currentIconVariant = nextVariant
+				}
+			}
 		})
 
 		trayReady.Store(true)
