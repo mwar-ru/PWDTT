@@ -37,6 +37,7 @@ export namespace backend {
 	    turnTcp?: boolean;
 	    proxyMode?: boolean;
 	    proxyPort?: number;
+	    startMinimized?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ConnectParams(source);
@@ -55,6 +56,7 @@ export namespace backend {
 	        this.turnTcp = source["turnTcp"];
 	        this.proxyMode = source["proxyMode"];
 	        this.proxyPort = source["proxyPort"];
+	        this.startMinimized = source["startMinimized"];
 	    }
 	}
 	export class LogEntry {
@@ -101,6 +103,26 @@ export namespace backend {
 	        this.port = source["port"];
 	        this.device_id = source["device_id"];
 	        this.turn_tcp = source["turn_tcp"];
+	    }
+	}
+	export class TrayState {
+	    tunnelState: string;
+	    proxyMode: boolean;
+	    proxyPort: number;
+	    splitEnabled: boolean;
+	    splitSupported: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new TrayState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tunnelState = source["tunnelState"];
+	        this.proxyMode = source["proxyMode"];
+	        this.proxyPort = source["proxyPort"];
+	        this.splitEnabled = source["splitEnabled"];
+	        this.splitSupported = source["splitSupported"];
 	    }
 	}
 	export class UpdateInfo {

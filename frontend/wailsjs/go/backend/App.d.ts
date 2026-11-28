@@ -21,6 +21,8 @@ export function GetObfsMode():Promise<string>;
 
 export function GetProfile(arg1:string):Promise<backend.ProfileData>;
 
+export function GetStartMinimized():Promise<boolean>;
+
 export function GetVersion():Promise<string>;
 
 export function InstallUpdate():Promise<void>;
@@ -39,8 +41,14 @@ export function SetObfsAccepted(arg1:boolean):Promise<void>;
 
 export function SetObfsMode(arg1:string):Promise<void>;
 
+export function SetStartMinimized(arg1:boolean):Promise<void>;
+
+export function ShouldStartHidden():Promise<boolean>;
+
 export function Shutdown(arg1:context.Context):Promise<void>;
 
 export function Startup(arg1:context.Context):Promise<void>;
 
 export function SyncProxyStandby(arg1:boolean,arg2:number):Promise<void>;
+
+export function UpdateTrayState(arg1:backend.TrayState):Promise<void>;

@@ -38,6 +38,10 @@ export function GetProfile(arg1) {
   return window['go']['backend']['App']['GetProfile'](arg1);
 }
 
+export function GetStartMinimized() {
+  return window['go']['backend']['App']['GetStartMinimized']();
+}
+
 export function GetVersion() {
   return window['go']['backend']['App']['GetVersion']();
 }
@@ -74,6 +78,14 @@ export function SetObfsMode(arg1) {
   return window['go']['backend']['App']['SetObfsMode'](arg1);
 }
 
+export function SetStartMinimized(arg1) {
+  return window['go']['backend']['App']['SetStartMinimized'](arg1);
+}
+
+export function ShouldStartHidden() {
+  return window['go']['backend']['App']['ShouldStartHidden']();
+}
+
 export function Shutdown(arg1) {
   return window['go']['backend']['App']['Shutdown'](arg1);
 }
@@ -84,4 +96,8 @@ export function Startup(arg1) {
 
 export function SyncProxyStandby(arg1, arg2) {
   return window['go']['backend']['App']['SyncProxyStandby'](arg1, arg2);
+}
+
+export function UpdateTrayState(arg1) {
+  return window['go']['backend']['App']['UpdateTrayState'](arg1);
 }

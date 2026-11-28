@@ -22,9 +22,8 @@ import shapeLight from '../assets/shape-light.png';
 import shapeDark from '../assets/shape-dark.png';
 import powerIcon from '../assets/power-icon.png';
 import { splitTunnelApi } from '../lib/splitTunnelApi';
-import { enterProxyMode, leaveProxyMode, onProxyReconnect, syncProxyModeOnStartup } from '../lib/utils/proxyModeGuard';
+import { enterProxyMode, leaveProxyMode, onProxyReconnect } from '../lib/utils/proxyModeGuard';
 
-let autoConnectAttempted = false;
 import './Connect.css';
 
 const SERVER_ICONS: { key: string; render: (size: number) => React.ReactNode }[] = [
@@ -464,29 +463,14 @@ export default function Connect() {
         });
       }
     });
+    const onSplitChanged = () => { void refreshSplitState(); };
+    window.addEventListener('mwpwdtt:split-changed', onSplitChanged);
     return () => {
       unsubSettings();
       unsubReconnect();
+      window.removeEventListener('mwpwdtt:split-changed', onSplitChanged);
     };
   }, [refreshSplitState]);
-
-  useEffect(() => {
-    if (autoConnectAttempted) return;
-    autoConnectAttempted = true;
-    const s = settingsStore.get();
-    if (!s.autoConnect) return;
-    const timer = setTimeout(() => {
-      if (tunnelStore.get() !== 'idle' || !selectedRef.current) return;
-      void syncProxyModeOnStartup(!!s.proxyMode, splitTunnelApi, s.proxyPort || 10808)
-        .catch(() => {})
-        .finally(() => {
-          if (tunnelStore.get() === 'idle' && selectedRef.current) {
-            void doConnectRef.current();
-          }
-        });
-    }, 500);
-    return () => clearTimeout(timer);
-  }, []);
 
   useEffect(() => {
     if (tunnelState !== 'idle' || !pendingReconnectRef.current) return;
@@ -514,6 +498,7 @@ export default function Connect() {
       if (next) {
         const guarded = await enterProxyMode(splitTunnelApi, port);
         await refreshSplitState();
+        window.dispatchEvent(new Event('mwpwdtt:split-changed'));
         if (wasActive) {
           pendingReconnectRef.current = true;
           tunnelStore.set('disconnecting');
@@ -534,6 +519,7 @@ export default function Connect() {
       } else {
         const restored = await leaveProxyMode(splitTunnelApi);
         await refreshSplitState();
+        window.dispatchEvent(new Event('mwpwdtt:split-changed'));
         if (wasActive) {
           pendingReconnectRef.current = true;
           tunnelStore.set('disconnecting');
@@ -570,6 +556,7 @@ export default function Connect() {
       const nextMode = next && cfg.mode === 'global' ? 'include' : cfg.mode;
       const saved = await splitTunnelApi.saveConfig({ ...cfg, enabled: next, mode: nextMode });
       setSplitEnabled(!!saved.enabled && saved.mode !== 'global');
+      window.dispatchEvent(new Event('mwpwdtt:split-changed'));
       toastStore.show(
         next ? 'Split Tunneling включён' : 'Split Tunneling выключен',
         2500,

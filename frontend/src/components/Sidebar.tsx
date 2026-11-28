@@ -8,6 +8,7 @@ import {
   IconSun,
   IconMoon,
 } from '@tabler/icons-react';
+import appIcon from '../assets/app-icon.png';
 import { themeStore } from '../lib/stores/themeStore';
 import { hasSplitTunnelBinding, splitTunnelApi } from '../lib/splitTunnelApi';
 
@@ -71,6 +72,9 @@ export default function Sidebar({ onSettings, pathname: pathnameProp }: Props) {
         .nav-btn { width: 48px; height: 48px; border: none; border-radius: 12px; background: transparent; color: var(--sidebar-text, #fff); cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0.75; transition: opacity 0.2s, background 0.3s ease, border-radius 0.3s ease, box-shadow 0.15s, transform 0.2s; position: relative; }
         .nav-btn:hover { opacity: 1; transform: scale(1.08); }
         .nav-btn--active { background: var(--sidebar-btn-active); opacity: 1; border-radius: 16px 16px 16px 2px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+        .mw-icon-wrap { position: relative; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; }
+        .mw-icon-img { width: 20px; height: 20px; border-radius: 5px; display: block; object-fit: cover; box-shadow: 0 1px 3px rgba(0,0,0,0.35); }
+        .mw-icon-gear { position: absolute; right: -4px; bottom: -4px; width: 15px; height: 15px; border-radius: 50%; background: var(--sidebar-to); color: var(--sidebar-text, #fff); display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.35); }
         .theme-toggle { background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; color: var(--sidebar-text, #fff); opacity: 0.7; border-radius: 8px; transition: opacity 0.15s, transform 0.2s; }
         .theme-toggle:hover { opacity: 1; transform: rotate(20deg); }
         .theme-toggle svg { transition: transform 0.35s ease, opacity 0.35s ease; }
@@ -97,7 +101,21 @@ export default function Sidebar({ onSettings, pathname: pathnameProp }: Props) {
           <button type="button" className="theme-toggle" onClick={toggleTheme} title="Toggle theme" aria-label="Переключить тему">
             {theme === 'light' ? <IconMoon size={17} stroke={2} /> : <IconSun size={17} stroke={2} />}
           </button>
-          <button type="button" className="nav-btn" onClick={onSettings} aria-label="Настройки">
+          <button
+            type="button"
+            className={`nav-btn${pathname === '/mw-settings' ? ' nav-btn--active' : ''}`}
+            onClick={() => navigate('/mw-settings')}
+            title="Настройки mwPWDTT"
+            aria-label="Настройки mwPWDTT"
+          >
+            <span className="mw-icon-wrap">
+              <img className="mw-icon-img" src={appIcon} alt="" draggable={false} />
+              <span className="mw-icon-gear">
+                <IconSettings2 stroke={2.4} size={11} />
+              </span>
+            </span>
+          </button>
+          <button type="button" className="nav-btn" onClick={onSettings} title="Настройки PWDTT" aria-label="Настройки">
             <IconSettings2 stroke={2} size={22} />
           </button>
         </div>

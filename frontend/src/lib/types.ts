@@ -18,6 +18,7 @@ export interface AppSettings {
   proxyMode?: boolean;
   proxyPort?: number;
   autoConnect?: boolean;
+  startMinimized?: boolean;
 }
 
 export type TunnelState = 'idle' | 'connecting' | 'connected' | 'disconnecting';

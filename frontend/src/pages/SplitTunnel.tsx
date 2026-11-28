@@ -273,7 +273,19 @@ export default function SplitTunnel() {
     );
   }
 
-  const proxyModeActive = !!settingsStore.get().proxyMode;
+  const [proxyModeActive, setProxyModeActive] = useState<boolean>(() => !!settingsStore.get().proxyMode);
+  useEffect(() => {
+    const unsub = settingsStore.subscribe(s => setProxyModeActive(!!s.proxyMode));
+    const onSplitChanged = () => {
+      void splitTunnelApi.getConfig().then(setCfg).catch(() => {});
+    };
+    window.addEventListener('mwpwdtt:split-changed', onSplitChanged);
+    return () => {
+      unsub();
+      window.removeEventListener('mwpwdtt:split-changed', onSplitChanged);
+    };
+  }, []);
+
   const competingVPNs = status?.competing_vpns ?? [];
   const filteredRunning = runningApps.filter(a => {
     const q = runningFilter.trim().toLowerCase();
